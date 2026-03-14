@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Share2, CreditCard, Clock, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,13 +20,12 @@ const Tracking = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthContext();
-  const { 
-    currentPilot, 
-    origin, 
-    destination, 
-    calculatePrice, 
-    rideStatus, 
-    setRideStatus 
+  const {
+    currentPilot,
+    origin,
+    destination,
+    calculatePrice,
+    setRideStatus
   } = useApp();
   
   const [pilotPosition, setPilotPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -40,6 +39,8 @@ const Tracking = () => {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const { playSound } = useNotificationSound();
   const { notifyPilotArrived } = useNotifications();
+  // Deduplication: only fire status-change side-effects once per status value
+  const handledStatusRef = useRef<string>('');
 
   const handleNewMessage = useCallback(() => {
     if (!isChatOpen) {
@@ -126,11 +127,12 @@ const Tracking = () => {
     }
   }, [rideId, user?.id, navigate]);
 
+  // Persist last-seen status across polling ticks (ref so it doesn't cause re-renders)
+  const lastStatusRef = useRef('');
+
   // Fetch ride and subscribe to updates
   useEffect(() => {
     if (!rideId) return;
-
-    let lastStatus = '';
 
     const fetchRide = async () => {
       const { data, error } = await supabase
@@ -145,12 +147,12 @@ const Tracking = () => {
         if (ride.pilot_lat && ride.pilot_lng) {
           setPilotPosition({ lat: ride.pilot_lat, lng: ride.pilot_lng });
         }
-        
+
         // Handle status changes (for polling fallback)
-        if (lastStatus && lastStatus !== ride.status) {
+        if (lastStatusRef.current && lastStatusRef.current !== ride.status) {
           handleStatusChange(ride.status);
         }
-        lastStatus = ride.status;
+        lastStatusRef.current = ride.status;
         
         // Check current status and redirect if needed
         if (ride.status === 'in_progress') {
@@ -162,6 +164,10 @@ const Tracking = () => {
     };
 
     const handleStatusChange = (status: string) => {
+      // Deduplicate: only fire once per distinct status value
+      if (handledStatusRef.current === status) return;
+      handledStatusRef.current = status;
+
       if (status === 'pilot_arriving') {
         playSound();
         toast.success('Piloto chegou ao embarque!');
@@ -206,10 +212,14 @@ const Tracking = () => {
           }
 
           handleStatusChange(updatedRide.status);
-          lastStatus = updatedRide.status;
+          lastStatusRef.current = updatedRide.status;
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[Tracking] Realtime channel error — relying on polling fallback');
+        }
+      });
 
     return () => {
       clearInterval(pollingInterval);
@@ -220,19 +230,29 @@ const Tracking = () => {
 
   const handleCancel = async () => {
     if (rideId) {
-      await supabase
+      const { error } = await supabase
         .from('rides')
         .update({ status: 'cancelled' })
         .eq('id', rideId);
+      if (error) {
+        console.error('[Tracking] Error cancelling ride:', error);
+        toast.error('Erro ao cancelar corrida. Tente novamente.');
+        return;
+      }
     }
     setRideStatus('idle');
     navigate('/passenger');
   };
 
-  if (!currentPilot) {
-    navigate('/passenger');
-    return null;
-  }
+  // Redirect if ride data loaded but no pilot context and ride is in a non-trackable state
+  useEffect(() => {
+    if (!currentPilot && currentRide && currentRide.status !== 'accepted' && currentRide.status !== 'pilot_arriving' && currentRide.status !== 'in_progress') {
+      navigate('/passenger');
+    }
+  }, [currentPilot, currentRide, navigate]);
+
+  // Show nothing while ride/pilot data is loading to avoid null crashes
+  if (!currentPilot || !currentRide) return null;
 
   const price = currentRide ? Number(currentRide.price) : calculatePrice();
   const status = currentRide?.status || 'accepted';
@@ -304,89 +324,95 @@ const Tracking = () => {
           arrivalTime={pilotToOriginMinutes}
           distance={routeInfo.pilotToOrigin.distanceMeters > 0 ? routeInfo.pilotToOrigin.distanceMeters / 1000 : undefined}
           onCall={() => {
-            if (currentRide?.pilot_phone) {
-              window.open(`tel:${currentRide.pilot_phone}`);
-            }
+            const phone = currentRide?.pilot_phone;
+            const digits = phone?.replace(/\D/g, '');
+            if (digits && digits.length >= 10) window.open(`tel:+55${digits}`);
           }}
           onMessage={() => {
-            if (currentRide?.pilot_phone) {
-              window.open(`https://wa.me/${currentRide.pilot_phone.replace(/\D/g, '')}`);
-            }
+            const phone = currentRide?.pilot_phone;
+            const digits = phone?.replace(/\D/g, '');
+            if (digits && digits.length >= 10) window.open(`https://wa.me/55${digits}`);
           }}
         />
 
         {/* Route timeline with times */}
-        <div className="bg-card rounded-xl shadow-soft p-3 space-y-1">
-          {/* Pilot to Origin segment */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex flex-col items-center">
-              <span className="text-lg animate-pulse">🚤</span>
-              <div className="w-0.5 h-6 bg-primary/40" />
+        <div className="bg-card rounded-2xl border border-border p-4 space-y-0" style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
+          {/* Pilot → Embarque */}
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col items-center pt-0.5">
+              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
+                <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.25 0 2.45-.2 3.57-.57a9.9 9.9 0 007.86 0C16.55 22.8 17.75 23 19 23h3v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.79l-1.2-2.4C20.4 8.51 20 7.77 20 7V6c0-1.1-.9-2-2-2h-1V1h-2v3H9V1H7v3H6C4.9 4 4 4.9 4 6v1c0 .77-.4 1.51-.63 2.13l-1.2 2.4a1 1 0 00-.06.79L3.95 19z"/>
+                </svg>
+              </div>
+              <div className="w-0.5 h-8 bg-border mt-1" />
             </div>
-            <div className="flex-1 flex items-center justify-between">
+            <div className="flex-1 flex items-start justify-between pb-3">
               <div>
-                <p className="text-xs text-muted">Piloto → Embarque</p>
-                <p className="font-medium text-foreground text-sm">
-                  {routeInfo.pilotToOrigin.distanceMeters < 1000 
-                    ? `${routeInfo.pilotToOrigin.distanceMeters}m` 
+                <p className="text-xs font-medium text-muted-foreground">Piloto → Embarque</p>
+                <p className="font-semibold text-foreground text-sm mt-0.5">
+                  {routeInfo.pilotToOrigin.distanceMeters < 1000
+                    ? `${routeInfo.pilotToOrigin.distanceMeters}m`
                     : `${(routeInfo.pilotToOrigin.distanceMeters / 1000).toFixed(1)}km`}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="bg-primary/10 text-primary px-2 py-1 rounded-lg">
-                  <span className="text-sm font-bold">{pilotToOriginMinutes} min</span>
-                </div>
-                <div className="flex items-center gap-1 bg-secondary/10 text-secondary px-2 py-1 rounded-lg">
-                  <Clock className="w-3 h-3" />
-                  <span className="text-sm font-bold">{etaEmbark}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Origin point */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex flex-col items-center">
-              <div className="w-3 h-3 rounded-full bg-success border-2 border-success/30" />
-              <div className="w-0.5 h-6 bg-success/40" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted">Embarque</p>
-              <p className="font-medium text-foreground text-sm truncate">{origin?.name}</p>
-            </div>
-          </div>
-          
-          {/* Origin to Destination segment */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex flex-col items-center">
-              <div className="w-3 h-3 rounded-full bg-destructive border-2 border-destructive/30" />
-            </div>
-            <div className="flex-1 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted">Destino</p>
-                <p className="font-medium text-foreground text-sm truncate">{destination?.name}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="bg-success/10 text-success px-2 py-1 rounded-lg">
-                  <span className="text-sm font-bold">+{originToDestMinutes} min</span>
-                </div>
-                <div className="flex items-center gap-1 bg-secondary/10 text-secondary px-2 py-1 rounded-lg">
-                  <Clock className="w-3 h-3" />
-                  <span className="text-sm font-bold">{etaDestination}</span>
-                </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full">
+                  {pilotToOriginMinutes} min
+                </span>
+                <span className="bg-muted/30 text-foreground text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <Clock className="w-3 h-3" />{etaEmbark}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Total and price */}
-          <div className="border-t border-border pt-2 mt-2 flex items-center justify-between">
+          {/* Embarque dot */}
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col items-center pt-0.5">
+              <div className="w-7 h-7 rounded-full bg-success/15 flex items-center justify-center">
+                <div className="w-2.5 h-2.5 rounded-full bg-success" />
+              </div>
+              <div className="w-0.5 h-8 bg-border mt-1" />
+            </div>
+            <div className="flex-1 pb-3">
+              <p className="text-xs font-medium text-muted-foreground">Embarque</p>
+              <p className="font-semibold text-foreground text-sm mt-0.5 truncate">{origin?.name}</p>
+            </div>
+          </div>
+
+          {/* Destino dot + ETA */}
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col items-center pt-0.5">
+              <div className="w-7 h-7 rounded-full bg-destructive/10 flex items-center justify-center">
+                <div className="w-2.5 h-2.5 rounded-full bg-destructive" />
+              </div>
+            </div>
+            <div className="flex-1 flex items-start justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Destino</p>
+                <p className="font-semibold text-foreground text-sm mt-0.5 truncate">{destination?.name}</p>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="bg-success/10 text-success text-xs font-bold px-2.5 py-1 rounded-full">
+                  +{originToDestMinutes} min
+                </span>
+                <span className="bg-muted/30 text-foreground text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
+                  <Clock className="w-3 h-3" />{etaDestination}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Totais */}
+          <div className="border-t border-border pt-3 mt-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-muted" />
-              <span className="text-sm text-muted">
-                Total: <span className="font-semibold text-foreground">{totalMinutes} min</span>
+              <CreditCard className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Total: <span className="font-bold text-foreground">{totalMinutes} min</span>
               </span>
             </div>
-            <p className="font-bold text-base text-foreground">
+            <p className="font-bold text-lg text-foreground">
               R$ {price.toFixed(2).replace('.', ',')}
             </p>
           </div>

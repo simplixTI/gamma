@@ -45,13 +45,20 @@ function ok(body: Record<string, unknown> = { received: true }): Response {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function handleRidePayment(
   supabase: ReturnType<typeof createClient>,
   mpPayment: Record<string, unknown>,
   mpPaymentId: string,
 ): Promise<Response> {
   const externalRef = String(mpPayment.external_reference || '');
-  const rideId = externalRef.replace('ride-', '');
+  const rideId = externalRef.startsWith('ride-') ? externalRef.slice(5) : '';
+
+  if (!UUID_RE.test(rideId)) {
+    console.error('Invalid rideId in external_reference:', externalRef);
+    return ok({ error: 'invalid_ride_id_format' });
+  }
 
   const failedStatuses = ['rejected', 'cancelled', 'refunded', 'charged_back'];
 
@@ -111,6 +118,20 @@ async function handleWalletTopup(
     return ok({ error: 'transaction_not_found' });
   }
 
+  // Idempotency guard: atomically claim the transaction before crediting
+  // If another webhook already claimed it, this update will match 0 rows
+  const { count } = await supabase
+    .from('wallet_transactions')
+    .update({ status: 'processing' })
+    .eq('id', tx.id)
+    .eq('status', 'pending')
+    .select('id', { count: 'exact', head: true });
+
+  if (!count || count === 0) {
+    console.log('Wallet transaction already processed (duplicate webhook), skipping:', tx.id);
+    return ok({ success: true, type: 'wallet', duplicate: true });
+  }
+
   const { error: creditError } = await supabase.rpc('credit_wallet', {
     p_user_id: tx.user_id,
     p_amount: tx.amount,
@@ -119,6 +140,11 @@ async function handleWalletTopup(
   });
 
   if (creditError) {
+    // Rollback status to pending so webhook can retry
+    await supabase
+      .from('wallet_transactions')
+      .update({ status: 'pending' })
+      .eq('id', tx.id);
     console.error('Error crediting wallet:', creditError);
     return ok({ error: 'credit_failed' });
   }

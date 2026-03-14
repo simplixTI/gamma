@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -45,19 +45,35 @@ export function useAuth() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [passengerProfile, setPassengerProfile] = useState<PassengerProfile | null>(null);
   const [pilotProfile, setPilotProfile] = useState<PilotProfile | null>(null);
+  // Deduplication: track whether a role fetch is already in-flight
+  const fetchingRef = useRef(false);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
+    let initialSessionHandled = false;
+
+    // FIRST check existing session synchronously, then subscribe
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      initialSessionHandled = true;
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user && !fetchingRef.current) {
+        fetchUserRole(session.user.id);
+      } else if (!session?.user) {
+        setLoading(false);
+      }
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
-        // Defer profile fetching
+
         if (session?.user) {
-          setTimeout(() => {
-            fetchUserRole(session.user.id);
-          }, 0);
+          // Skip if getSession() already triggered a fetch (INITIAL_SESSION fires simultaneously)
+          if (event === 'INITIAL_SESSION' && initialSessionHandled) return;
+          if (!fetchingRef.current) {
+            setTimeout(() => fetchUserRole(session.user.id), 0);
+          }
         } else {
           setRole(null);
           setPassengerProfile(null);
@@ -67,21 +83,12 @@ export function useAuth() {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserRole(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
     return () => subscription.unsubscribe();
   }, []);
 
   const fetchUserRole = useCallback(async (userId: string) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
@@ -116,8 +123,9 @@ export function useAuth() {
       console.error('Error in fetchUserRole:', error);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, []);
+  }, [fetchingRef]);
 
   const createOAuthProfile = async (userId: string, role: UserRole) => {
     const { data: { user: currentUser } } = await supabase.auth.getUser();

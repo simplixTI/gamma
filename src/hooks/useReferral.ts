@@ -6,6 +6,7 @@ export interface ReferralDiscount {
   discount_percent: number;
   is_used: boolean;
   created_at: string;
+  expires_at: string | null;
 }
 
 export function useReferral(userId: string | undefined) {
@@ -37,11 +38,13 @@ export function useReferral(userId: string | undefined) {
         setReferralCode(updated?.referral_code ?? code);
       }
 
+      const now = new Date().toISOString();
       const { data: discounts } = await supabase
         .from('referral_discounts')
-        .select('id, discount_percent, is_used, created_at')
+        .select('id, discount_percent, is_used, created_at, expires_at')
         .eq('passenger_user_id', userId)
         .eq('is_used', false)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
         .order('created_at', { ascending: false });
 
       setPendingDiscounts(discounts ?? []);
@@ -56,7 +59,7 @@ export function useReferral(userId: string | undefined) {
 
   /**
    * Call when a new user signs up with a referral code.
-   * Awards a 30% coupon to the referrer.
+   * Only marks the new user as referred — discount is granted after their first completed ride.
    */
   const redeemReferralCode = async (code: string, newUserId: string) => {
     const { data: referrer } = await supabase
@@ -67,30 +70,76 @@ export function useReferral(userId: string | undefined) {
 
     if (!referrer) return false;
 
-    // Mark new user as referred
+    // Just mark new user as referred — no discount yet
     await supabase
       .from('passenger_profiles')
       .update({ referred_by: code.toUpperCase() })
       .eq('user_id', newUserId);
 
-    // Award coupon to referrer
-    await supabase.from('referral_discounts').insert({
-      passenger_user_id: referrer.user_id,
-      discount_percent: 30,
-      earned_from_user_id: newUserId,
-    });
-
     return true;
   };
 
   /**
-   * Marks a discount as used on a ride.
+   * Call after a referred user completes their first ride.
+   * Grants a 30% discount (valid 30 days) to the referrer, capped at 3 pending.
+   * Safe to call multiple times — only grants once per indicado.
+   */
+  const grantReferralDiscount = async (indicadoUserId: string) => {
+    // Check if this user was referred
+    const { data: profile } = await supabase
+      .from('passenger_profiles')
+      .select('referred_by')
+      .eq('user_id', indicadoUserId)
+      .maybeSingle();
+
+    if (!profile?.referred_by) return false;
+
+    // Check if a discount was already granted for this indicado (prevent double grant)
+    const { data: existing } = await supabase
+      .from('referral_discounts')
+      .select('id')
+      .eq('earned_from_user_id', indicadoUserId)
+      .maybeSingle();
+
+    if (existing) return false; // Already granted
+
+    // Find the referrer by code
+    const { data: referrer } = await supabase
+      .from('passenger_profiles')
+      .select('user_id')
+      .eq('referral_code', profile.referred_by)
+      .maybeSingle();
+
+    if (!referrer) return false;
+
+    // Insert discount — DB trigger enforces the 3-pending cap
+    try {
+      await supabase.from('referral_discounts').insert({
+        passenger_user_id: referrer.user_id,
+        discount_percent: 30,
+        earned_from_user_id: indicadoUserId,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      return true;
+    } catch {
+      // Cap reached or other DB error — silent fail (no user impact)
+      return false;
+    }
+  };
+
+  /**
+   * Marks a discount as used on a ride. Throws on DB error so caller can handle.
    */
   const useDiscount = async (discountId: string, rideId: string) => {
-    await supabase
+    const { error } = await supabase
       .from('referral_discounts')
       .update({ is_used: true, used_on_ride_id: rideId, used_at: new Date().toISOString() })
-      .eq('id', discountId);
+      .eq('id', discountId)
+      .eq('is_used', false); // Extra guard: only mark unused discounts as used
+    if (error) {
+      console.error('[useReferral] Failed to consume discount:', error);
+      throw new Error('Erro ao aplicar desconto');
+    }
     setPendingDiscounts((prev) => prev.filter((d) => d.id !== discountId));
   };
 
@@ -104,6 +153,7 @@ export function useReferral(userId: string | undefined) {
     activeDiscount,
     loading,
     redeemReferralCode,
+    grantReferralDiscount,
     useDiscount,
     refetch: fetchReferralData,
   };

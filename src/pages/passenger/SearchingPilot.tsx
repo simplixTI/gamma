@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, MapPin, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,8 @@ const SearchingPilot = () => {
   const [currentRideId, setCurrentRideId] = useState<string | null>(null);
   const [showAcceptedModal, setShowAcceptedModal] = useState(false);
   const [acceptedPilot, setAcceptedPilot] = useState<{ name: string; rating: number; phone: string } | null>(null);
-  const [navigatedToTracking, setNavigatedToTracking] = useState(false);
+  // Ref (not state) prevents stale closure in both realtime + polling callbacks
+  const navigatedToTrackingRef = React.useRef(false);
   const { playSound } = useNotificationSound();
   const { notifyRideAccepted } = useNotifications();
   // Fetch current ride on mount
@@ -30,22 +32,36 @@ const SearchingPilot = () => {
     if (!user?.id) return;
     
     const fetchCurrentRide = async () => {
-      const ride = await getCurrentRide(user.id);
-      if (ride) {
-        setCurrentRideId(ride.id);
-        if (ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') {
-          // Already matched, go to tracking
-          setCurrentPilot({
-            id: ride.pilot_id || 'pilot-1',
-            name: ride.pilot_name || 'Capitão',
-            photo: '/placeholder.svg',
-            rating: 4.9,
-            boat: 'Lancha Rápida',
-            phone: ride.pilot_phone || '',
-          });
-          setRideStatus('matched');
-          navigate('/passenger/tracking', { state: { rideId: ride.id } });
+      try {
+        const ride = await getCurrentRide(user.id);
+        if (ride) {
+          setCurrentRideId(ride.id);
+          if (ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') {
+            // Already matched, go to tracking
+            let pilotRating = 4.9;
+            if (ride.pilot_id) {
+              const { data: pp } = await supabase
+                .from('pilot_profiles')
+                .select('rating')
+                .eq('user_id', ride.pilot_id)
+                .maybeSingle();
+              if (pp?.rating) pilotRating = pp.rating;
+            }
+            setCurrentPilot({
+              id: ride.pilot_id || 'pilot-1',
+              name: ride.pilot_name || 'Capitão',
+              photo: '/placeholder.svg',
+              rating: pilotRating,
+              boat: 'Lancha Rápida',
+              phone: ride.pilot_phone || '',
+            });
+            setRideStatus('matched');
+            navigate('/passenger/tracking', { state: { rideId: ride.id } });
+          }
         }
+      } catch (err) {
+        console.error('[SearchingPilot] Error fetching ride:', err);
+        // Don't show toast here — ride fetch might fail transiently on mount
       }
     };
     fetchCurrentRide();
@@ -65,18 +81,29 @@ const SearchingPilot = () => {
           table: 'rides',
           filter: `id=eq.${currentRideId}`,
         },
-        (payload) => {
+        async (payload) => {
           const updatedRide = payload.new as DbRide;
-          if ((updatedRide.status === 'accepted' || updatedRide.status === 'pilot_arriving' || updatedRide.status === 'in_progress') && !navigatedToTracking) {
-            setNavigatedToTracking(true);
+          if ((updatedRide.status === 'accepted' || updatedRide.status === 'pilot_arriving' || updatedRide.status === 'in_progress') && !navigatedToTrackingRef.current) {
+            navigatedToTrackingRef.current = true;
             playSound();
             notifyRideAccepted(updatedRide.pilot_name || 'Capitão');
+
+            // Fetch real pilot rating from DB
+            let pilotRating = 4.9;
+            if (updatedRide.pilot_id) {
+              const { data: pp } = await supabase
+                .from('pilot_profiles')
+                .select('rating')
+                .eq('user_id', updatedRide.pilot_id)
+                .maybeSingle();
+              if (pp?.rating) pilotRating = pp.rating;
+            }
 
             const pilot = {
               id: updatedRide.pilot_id || 'pilot-1',
               name: updatedRide.pilot_name || 'Capitão',
               photo: '/placeholder.svg',
-              rating: 4.9,
+              rating: pilotRating,
               boat: 'Lancha Rápida',
               phone: updatedRide.pilot_phone || '',
             };
@@ -86,7 +113,7 @@ const SearchingPilot = () => {
             setShowAcceptedModal(true);
             setRideStatus('matched');
 
-            toast.success(`🎉 ${updatedRide.pilot_name || 'Piloto'} aceitou sua corrida!`, {
+            toast.success(`${updatedRide.pilot_name || 'Piloto'} aceitou sua corrida!`, {
               duration: 5000,
             });
             navigate('/passenger/tracking', { state: { rideId: updatedRide.id } });
@@ -97,7 +124,11 @@ const SearchingPilot = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[SearchingPilot] Realtime channel error — polling will continue');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -120,13 +151,22 @@ const SearchingPilot = () => {
           return;
         }
 
-        if ((ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') && !navigatedToTracking) {
-          setNavigatedToTracking(true);
+        if ((ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') && !navigatedToTrackingRef.current) {
+          navigatedToTrackingRef.current = true;
+          let pilotRating = 4.9;
+          if (ride.pilot_id) {
+            const { data: pp } = await supabase
+              .from('pilot_profiles')
+              .select('rating')
+              .eq('user_id', ride.pilot_id)
+              .maybeSingle();
+            if (pp?.rating) pilotRating = pp.rating;
+          }
           const pilot = {
             id: ride.pilot_id || 'pilot-1',
             name: ride.pilot_name || 'Capitão',
             photo: '/placeholder.svg',
-            rating: 4.9,
+            rating: pilotRating,
             boat: 'Lancha Rápida',
             phone: ride.pilot_phone || '',
           };
@@ -148,7 +188,7 @@ const SearchingPilot = () => {
     const interval = setInterval(poll, 3000);
 
     return () => clearInterval(interval);
-  }, [currentRideId, navigate, setCurrentPilot, setRideStatus, playSound]);
+  }, [currentRideId, navigate, setCurrentPilot, setRideStatus]);
 
   // Increment search time and auto-cancel after 5 minutes
   useEffect(() => {
@@ -255,7 +295,9 @@ const SearchingPilot = () => {
             {/* Center boat */}
             <div className="relative w-40 h-40 flex items-center justify-center">
               <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center shadow-lg">
-                <span className="text-4xl animate-bounce" style={{ animationDuration: '2s' }}>🚤</span>
+                <svg className="w-10 h-10 text-secondary-foreground animate-bounce" style={{ animationDuration: '2s' }} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.25 0 2.45-.2 3.57-.57a9.9 9.9 0 007.86 0C16.55 22.8 17.75 23 19 23h3v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.79l-1.2-2.4C20.4 8.51 20 7.77 20 7V6c0-1.1-.9-2-2-2h-1V1h-2v3H9V1H7v3H6C4.9 4 4 4.9 4 6v1c0 .77-.4 1.51-.63 2.13l-1.2 2.4a1 1 0 00-.06.79L3.95 19z"/>
+                </svg>
               </div>
             </div>
           </div>

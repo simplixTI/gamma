@@ -3,6 +3,8 @@ import { Bell, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
 
+const DISMISSED_KEY = 'gamma_notif_banner_dismissed';
+
 interface NotificationPermissionBannerProps {
   onClose?: () => void;
 }
@@ -10,7 +12,9 @@ interface NotificationPermissionBannerProps {
 const NotificationPermissionBanner = ({ onClose }: NotificationPermissionBannerProps) => {
   const { permission, isSupported, requestPermission } = useNotifications();
   const [isLoading, setIsLoading] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(DISMISSED_KEY) === '1'
+  );
 
   // Don't show if not supported, already granted, or dismissed
   if (!isSupported || permission === 'granted' || dismissed) {
@@ -29,6 +33,7 @@ const NotificationPermissionBanner = ({ onClose }: NotificationPermissionBannerP
   };
 
   const handleDismiss = () => {
+    localStorage.setItem(DISMISSED_KEY, '1');
     setDismissed(true);
     onClose?.();
   };

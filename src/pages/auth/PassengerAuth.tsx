@@ -30,7 +30,7 @@ const signInSchema = z.object({
 const PassengerAuth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithPhone, verifyOtp, loading, user, role } = useAuthContext();
+  const { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithPhone, verifyOtp, uploadPhoto, loading, user, role } = useAuthContext();
 
   // Redirect if already logged in
   useEffect(() => {
@@ -90,12 +90,27 @@ const PassengerAuth = () => {
       }
 
       setIsSubmitting(true);
-      
+
       const data = await signUpWithEmail(email, password, 'passenger', {
         fullName,
         phone: phone.replace(/\D/g, ''),
         cpf: cpf.replace(/\D/g, ''),
       });
+
+      // Upload photo if selected
+      if (photoFile && data?.user?.id) {
+        try {
+          const photoUrl = await uploadPhoto(photoFile, 'avatars');
+          const { supabase } = await import('@/integrations/supabase/client');
+          await supabase
+            .from('passenger_profiles')
+            .update({ photo_url: photoUrl })
+            .eq('user_id', data.user.id);
+        } catch (photoErr) {
+          console.error('Photo upload failed:', photoErr);
+          // Non-fatal: account created, photo just won't be set
+        }
+      }
 
       // Redeem referral code if provided
       if (referralCode.trim() && data?.user?.id) {
@@ -113,6 +128,9 @@ const PassengerAuth = () => {
             discount_percent: 30,
             earned_from_user_id: data.user.id,
           });
+          toast.success('Código de indicação aplicado! Seu amigo ganhou 30% off.');
+        } else {
+          toast.error('Código de indicação não encontrado. Conta criada sem o desconto.');
         }
       }
 
@@ -246,8 +264,8 @@ const PassengerAuth = () => {
 
       <div className="p-4 max-w-md mx-auto">
         {/* Logo */}
-        <div className="flex justify-center py-6">
-          <Logo size="md" />
+        <div className="flex justify-center py-8">
+          <Logo size="lg" />
         </div>
 
         {mode === 'forgot' ? (

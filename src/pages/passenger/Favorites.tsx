@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, MapPin, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Star, MapPin, Trash2, Plus, Home, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import SimplixFooter from '@/components/SimplixFooter';
@@ -27,11 +27,11 @@ const Favorites = () => {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'home':
-        return '🏠';
+        return <Home className="w-6 h-6 text-primary" />;
       case 'work':
-        return '💼';
+        return <Briefcase className="w-6 h-6 text-primary" />;
       default:
-        return '📍';
+        return <MapPin className="w-6 h-6 text-primary" />;
     }
   };
 

@@ -2,12 +2,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { AppProvider } from "@/contexts/AppContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SettingsInitializer } from "@/components/SettingsInitializer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ConnectionStatusBanner from "@/components/ConnectionStatusBanner";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { useEffect } from "react";
+import { isNativeMobile, platform } from "./capacitor";
 import Landing from "./pages/Landing";
 import PassengerAuth from "./pages/auth/PassengerAuth";
 import PilotAuth from "./pages/auth/PilotAuth";
@@ -26,6 +29,7 @@ import Favorites from "./pages/passenger/Favorites";
 import Settings from "./pages/passenger/Settings";
 import Referral from "./pages/passenger/Referral";
 import Help from "./pages/passenger/Help";
+import SavedCards from "./pages/passenger/SavedCards";
 import PilotDashboard from "./pages/pilot/PilotDashboard";
 import ActiveRide from "./pages/pilot/ActiveRide";
 import RatePassenger from "./pages/pilot/RatePassenger";
@@ -40,16 +44,39 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Handles Android hardware back button via Capacitor App plugin
+function AndroidBackHandler() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!isNativeMobile || platform !== 'android') return;
+    let cleanup: (() => void) | undefined;
+    import('@capacitor/app').then(({ App: CapApp }) => {
+      const handler = CapApp.addListener('backButton', ({ canGoBack }) => {
+        if (canGoBack) {
+          navigate(-1);
+        } else {
+          CapApp.exitApp();
+        }
+      });
+      cleanup = () => { handler.then(h => h.remove()); };
+    });
+    return () => { cleanup?.(); };
+  }, [navigate]);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <SettingsInitializer>
         <AppProvider>
           <TooltipProvider>
-            <ConnectionStatusBanner />
-            <Toaster />
-            <Sonner />
+            <ErrorBoundary>
             <BrowserRouter>
+              <AndroidBackHandler />
+              <ConnectionStatusBanner />
+              <Toaster />
+              <Sonner />
               <Routes>
                 <Route path="/" element={<Landing />} />
                 
@@ -129,6 +156,11 @@ const App = () => (
                     <Help />
                   </ProtectedRoute>
                 } />
+                <Route path="/passenger/saved-cards" element={
+                  <ProtectedRoute requiredRole="passenger">
+                    <SavedCards />
+                  </ProtectedRoute>
+                } />
                 
                 {/* Pilot routes */}
                 <Route path="/pilot" element={
@@ -178,6 +210,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
+            </ErrorBoundary>
           </TooltipProvider>
         </AppProvider>
       </SettingsInitializer>

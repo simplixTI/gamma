@@ -20,6 +20,7 @@ import { validatePilotProfile } from '@/utils/profileValidation';
 import { getFriendlyErrorMessage } from '@/utils/retryOperation';
 import { BOAT_CAPACITY } from '@/data/mockData';
 import SimplixFooter from '@/components/SimplixFooter';
+import Logo from '@/components/Logo';
 
 const PilotDashboard = () => {
   const navigate = useNavigate();
@@ -30,7 +31,9 @@ const PilotDashboard = () => {
   // Pool: all active rides currently on the boat
   const [activeRides, setActiveRides] = useState<DbRide[]>([]);
   const [currentPassengers, setCurrentPassengers] = useState(0);
-  const [showNotificationBanner, setShowNotificationBanner] = useState(true);
+  const [showNotificationBanner, setShowNotificationBanner] = useState(
+    () => localStorage.getItem('gamma_notif_banner_dismissed') !== '1'
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -75,10 +78,13 @@ const PilotDashboard = () => {
 
   const fetchPendingRides = useCallback(async () => {
     setRidesLoading(true);
+    // Only show rides created in the last 15 minutes to avoid stale requests
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('rides')
       .select('*')
       .eq('status', 'pending')
+      .gte('created_at', cutoff)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -161,6 +167,14 @@ const PilotDashboard = () => {
       requestPermission();
     }
   }, [isPilotOnline, permission, requestPermission]);
+
+  // Go offline when component unmounts (tab closed / navigation away)
+  useEffect(() => {
+    return () => {
+      setIsPilotOnline(false);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const drawerStats = {
     ridestoday: stats.ridesToday,
@@ -264,6 +278,10 @@ const PilotDashboard = () => {
           </Button>
         </div>
 
+        <div className="flex justify-center pb-2">
+          <Logo size="sm" variant="white" />
+        </div>
+
         <div className="flex items-center justify-around pb-4 px-4">
           <div className="text-center">
             <p className="text-2xl font-bold">{statsLoading ? '-' : stats.ridesToday}</p>
@@ -311,7 +329,7 @@ const PilotDashboard = () => {
         {activeRides.length > 0 && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-foreground">🚤 Passageiros no barco</h3>
+              <h3 className="text-sm font-semibold text-foreground">Passageiros no barco</h3>
               <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
                 {currentPassengers}/{boatCapacity} lugares
               </span>

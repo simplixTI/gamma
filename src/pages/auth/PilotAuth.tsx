@@ -262,8 +262,8 @@ const PilotAuth = () => {
 
       <div className="p-4 max-w-md mx-auto pb-8">
         {/* Logo */}
-        <div className="flex justify-center py-6">
-          <Logo size="md" />
+        <div className="flex justify-center py-8">
+          <Logo size="lg" />
         </div>
 
         {mode === 'forgot' ? (

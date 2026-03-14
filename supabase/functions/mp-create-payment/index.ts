@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
-        'X-Idempotency-Key': `ride-${rideId}-${Date.now()}`,
+        'X-Idempotency-Key': `ride-${rideId}-${paymentMethod}`,
       },
       body: JSON.stringify(mpPayload),
     });

@@ -43,6 +43,7 @@ const ActiveRide = () => {
   const [isCancelling, setIsCancelling] = useState(false);
   const [currentPilotId, setCurrentPilotId] = useState<string | undefined>(undefined);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  const [passengerPhone, setPassengerPhone] = useState<string | null>(null);
   const { playSound } = useNotificationSound();
 
   const handleNewMessage = useCallback(() => {
@@ -108,6 +109,7 @@ const ActiveRide = () => {
         const dbRide = data as DbRide;
         setRide(dbRideToRide(dbRide));
         setPassengerCount(dbRide.passenger_count ?? 1);
+        setPassengerPhone(dbRide.passenger_phone ?? null);
         if (data.pilot_id) setCurrentPilotId(data.pilot_id);
         // Set phase based on ride status
         if (data.status === 'accepted') {
@@ -144,7 +146,11 @@ const ActiveRide = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[ActiveRide] Realtime channel error');
+        }
+      });
 
     // Subscribe to ride updates
     const channel = supabase
@@ -162,7 +168,11 @@ const ActiveRide = () => {
           setRide(dbRideToRide(updatedRide));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[ActiveRide] Realtime channel error');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -201,6 +211,10 @@ const ActiveRide = () => {
         newPhase = 'in_progress';
         break;
       case 'in_progress':
+        // Warn if payment is still pending — pilot can still complete
+        if (paymentStatus !== 'paid') {
+          toast.warning('Pagamento ainda pendente. Você receberá assim que confirmado.', { duration: 6000 });
+        }
         newStatus = 'completed';
         newPhase = 'completed';
         break;
@@ -398,7 +412,14 @@ const ActiveRide = () => {
               <p className="text-sm">{passengerCount} passageiro{passengerCount > 1 ? 's' : ''}</p>
             </div>
           </div>
-          <Button variant="secondary" size="icon" className="rounded-full">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="rounded-full"
+            onClick={() => { if (passengerPhone) window.open(`tel:${passengerPhone}`); }}
+            disabled={!passengerPhone}
+            title={passengerPhone ? `Ligar para ${ride.passengerName}` : 'Telefone não disponível'}
+          >
             <Phone className="w-5 h-5" />
           </Button>
         </div>

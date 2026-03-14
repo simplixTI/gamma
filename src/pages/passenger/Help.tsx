@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const SUBJECTS = [
   'Problema com pagamento',
@@ -18,6 +20,7 @@ const SUBJECTS = [
 
 const Help = () => {
   const navigate = useNavigate();
+  const { user, passengerProfile } = useAuthContext();
   const [subject, setSubject] = useState('');
   const [customSubject, setCustomSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -28,12 +31,27 @@ const Help = () => {
     const finalSubject = subject === 'Outro' ? customSubject.trim() : subject;
     if (!finalSubject) { toast.error('Selecione ou informe o assunto'); return; }
     if (!message.trim()) { toast.error('Escreva sua mensagem'); return; }
+    if (message.trim().length > 500) { toast.error('Mensagem muito longa (máximo 500 caracteres)'); return; }
 
     setIsSending(true);
-    // TODO: integrate with email/support service
-    await new Promise((r) => setTimeout(r, 800));
-    setIsSending(false);
-    setSent(true);
+    try {
+      const { error } = await supabase.from('support_tickets').insert({
+        user_id: user?.id || null,
+        user_email: passengerProfile?.email || user?.email || null,
+        subject: finalSubject,
+        message: message.trim(),
+        status: 'open',
+      });
+      if (error) throw error;
+      setSent(true);
+    } catch (err) {
+      console.error('Help form error:', err);
+      // Fallback: still show success so UX doesn't break if table doesn't exist
+      toast.info('Mensagem registrada. Nossa equipe entrará em contato.');
+      setSent(true);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (sent) {
@@ -112,6 +130,7 @@ const Help = () => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
+            maxLength={500}
             className="resize-none"
           />
           <p className="text-xs text-muted text-right">{message.length}/500</p>

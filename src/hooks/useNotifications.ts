@@ -62,7 +62,7 @@ export const useNotifications = () => {
   // Ride-specific notification helpers
   const notifyRideAccepted = useCallback(
     (pilotName: string) => {
-      return showNotification('Corrida aceita! 🚤', {
+      return showNotification('Corrida aceita!', {
         body: `${pilotName} aceitou sua corrida e está a caminho.`,
         tag: 'ride-accepted',
       });
@@ -72,7 +72,7 @@ export const useNotifications = () => {
 
   const notifyPilotArrived = useCallback(
     (pilotName: string, location: string) => {
-      return showNotification('Piloto chegou! 📍', {
+      return showNotification('Piloto chegou!', {
         body: `${pilotName} está esperando você em ${location}.`,
         tag: 'pilot-arrived',
       });
@@ -81,7 +81,7 @@ export const useNotifications = () => {
   );
 
   const notifyRideStarted = useCallback(() => {
-    return showNotification('Viagem iniciada! 🌊', {
+    return showNotification('Viagem iniciada!', {
       body: 'Sua viagem começou. Boa travessia!',
       tag: 'ride-started',
     });
@@ -89,7 +89,7 @@ export const useNotifications = () => {
 
   const notifyRideCompleted = useCallback(
     (price: number) => {
-      return showNotification('Viagem concluída! ✅', {
+      return showNotification('Viagem concluída!', {
         body: `Você chegou ao destino. Valor: R$${price.toFixed(0)}`,
         tag: 'ride-completed',
       });
@@ -100,7 +100,7 @@ export const useNotifications = () => {
   // Pilot notifications
   const notifyNewRideRequest = useCallback(
     (passengerName: string, origin: string, price: number) => {
-      return showNotification('Nova corrida! 🔔', {
+      return showNotification('Nova corrida!', {
         body: `${passengerName} em ${origin} - R$${price.toFixed(0)}`,
         tag: 'new-ride',
       });

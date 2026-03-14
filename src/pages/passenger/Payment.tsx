@@ -39,11 +39,8 @@ const Payment = () => {
           </div>
           <div className="flex-1 text-left">
             <p className="font-semibold text-foreground">PIX</p>
-            <p className="text-sm text-muted">Disponivel ao finalizar corrida — expira em 30 min</p>
+            <p className="text-sm text-muted">Solicitado ao confirmar a corrida — QR Code expira em 30 min</p>
           </div>
-          <span className="text-xs bg-green-500/10 text-green-600 px-2 py-1 rounded-full font-medium">
-            Disponivel
-          </span>
         </div>
 
         {/* Credit Card */}
@@ -52,13 +49,25 @@ const Payment = () => {
             <CreditCard className="w-6 h-6 text-blue-600" />
           </div>
           <div className="flex-1 text-left">
-            <p className="font-semibold text-foreground">Cartão de Crédito</p>
-            <p className="text-sm text-muted">Disponivel ao finalizar corrida — sem salvar dados</p>
+            <p className="font-semibold text-foreground">Cartão de Crédito / Débito</p>
+            <p className="text-sm text-muted">Inserido ao confirmar a corrida — dados criptografados via Mercado Pago</p>
           </div>
-          <span className="text-xs bg-blue-500/10 text-blue-600 px-2 py-1 rounded-full font-medium">
-            Disponivel
-          </span>
         </div>
+
+        {/* Saved Cards */}
+        <button
+          onClick={() => navigate('/passenger/saved-cards')}
+          className="w-full bg-card rounded-xl p-4 flex items-center gap-4 border border-border active:scale-[0.98] transition-transform"
+        >
+          <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
+            <CreditCard className="w-6 h-6 text-purple-600" />
+          </div>
+          <div className="flex-1 text-left">
+            <p className="font-semibold text-foreground">Cartões salvos</p>
+            <p className="text-sm text-muted">Gerencie seus cartões cadastrados</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-muted" />
+        </button>
 
         {/* Security info */}
         <div className="bg-muted/5 rounded-xl p-4 mt-4">
@@ -67,7 +76,7 @@ const Payment = () => {
             <div>
               <p className="text-sm font-medium text-foreground">Pagamento seguro via Mercado Pago</p>
               <p className="text-xs text-muted mt-1">
-                Seus dados de pagamento são criptografados. Os numeros completos do cartao nunca sao armazenados em nossos servidores.
+                Seus dados de pagamento são criptografados. Os números completos do cartão nunca são armazenados em nossos servidores.
               </p>
             </div>
           </div>

@@ -263,7 +263,7 @@ const PilotProfileEdit = () => {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">
-                  ⭐ {profile.rating?.toFixed(1) || '5.0'}
+                  {profile.rating?.toFixed(1) || '5.0'}
                 </p>
                 <p className="text-xs text-muted">Avaliação</p>
               </div>

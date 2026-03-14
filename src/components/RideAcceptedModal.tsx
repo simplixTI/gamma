@@ -62,7 +62,7 @@ const RideAcceptedModal = ({
 
           {/* Title */}
           <h2 className="text-2xl font-bold text-foreground mb-2">
-            Corrida Aceita! 🎉
+            Corrida Aceita!
           </h2>
           <p className="text-muted mb-6">
             Prepare-se para embarcar

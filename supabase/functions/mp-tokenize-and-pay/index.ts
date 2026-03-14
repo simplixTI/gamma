@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
+    const body = await req.json();
     const {
+      savedCardId,
       cardNumber,
       cardholderName,
       expiryMonth,
@@ -45,14 +47,7 @@ Deno.serve(async (req) => {
       passengerName,
       passengerDeviceId,
       pilotId,
-    } = await req.json();
-
-    if (!cardNumber || !cardholderName || !expiryMonth || !expiryYear || !cvv) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Missing card fields',
-      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    } = body;
 
     if (!rideId || !amount || !passengerEmail) {
       return new Response(JSON.stringify({
@@ -61,21 +56,61 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Resolve card fields — either from saved card or from request body
+    let resolvedCardNumber = cardNumber;
+    let resolvedCardholderName = cardholderName;
+    let resolvedExpiryMonth = expiryMonth;
+    let resolvedExpiryYear = expiryYear;
+
+    if (savedCardId) {
+      // Load saved card metadata from Supabase
+      const { data: savedCard, error: scError } = await supabase
+        .from('saved_cards')
+        .select('*')
+        .eq('id', savedCardId)
+        .single();
+
+      if (scError || !savedCard) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Saved card not found',
+        }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // For saved cards we only have last_four — tokenization requires full number.
+      // We re-tokenize using the CVV only (MP requires full card for each payment).
+      // Since we only store metadata (not full PAN), we return an informative error.
+      // In a full implementation you'd store MP's card_id via Customers API.
+      // For now, inform the frontend to use a new card entry.
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Pagamento com cartão salvo requer integração com MP Customers API. Por favor, insira os dados completos do cartão.',
+        requiresFullCard: true,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if (!resolvedCardNumber || !resolvedCardholderName || !resolvedExpiryMonth || !resolvedExpiryYear || !cvv) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Missing card fields',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Step 1: Tokenize card server-side
     const tokenPayload = {
-      card_number: cardNumber.replace(/\s/g, ''),
-      expiration_year: String(expiryYear).length === 2 ? `20${expiryYear}` : String(expiryYear),
-      expiration_month: String(expiryMonth).padStart(2, '0'),
+      card_number: resolvedCardNumber.replace(/\s/g, ''),
+      expiration_year: String(resolvedExpiryYear).length === 2 ? `20${resolvedExpiryYear}` : String(resolvedExpiryYear),
+      expiration_month: String(resolvedExpiryMonth).padStart(2, '0'),
       security_code: cvv,
       cardholder: {
-        name: cardholderName,
+        name: resolvedCardholderName,
         identification: passengerCpf
           ? { type: 'CPF', number: passengerCpf.replace(/\D/g, '') }
           : undefined,
       },
     };
 
-    console.log('Tokenizing card for ride:', rideId);
+    console.log('Tokenizing new card for ride:', rideId);
 
     const tokenRes = await fetch(`${MP_API}/v1/card_tokens`, {
       method: 'POST',

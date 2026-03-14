@@ -26,10 +26,13 @@ const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
     return <Navigate to={authPath} state={{ from: location }} replace />;
   }
 
-  if (requiredRole && role !== requiredRole) {
-    // User is logged in but with wrong role
+  if (requiredRole && role !== null && role !== requiredRole) {
+    // User is logged in but with wrong role — send to their own dashboard
     const correctPath = role === 'pilot' ? '/pilot' : '/passenger';
-    return <Navigate to={correctPath} replace />;
+    // Only redirect if we're not already on their correct path (prevents loop)
+    if (!location.pathname.startsWith(correctPath)) {
+      return <Navigate to={correctPath} replace />;
+    }
   }
 
   return <>{children}</>;

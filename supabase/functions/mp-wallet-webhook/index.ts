@@ -136,6 +136,19 @@ Deno.serve(async (req) => {
       return ok({ error: 'transaction_not_found' });
     }
 
+    // Idempotency guard: atomically claim the transaction before crediting
+    const { count } = await supabase
+      .from('wallet_transactions')
+      .update({ status: 'processing' })
+      .eq('id', tx.id)
+      .eq('status', 'pending')
+      .select('id', { count: 'exact', head: true });
+
+    if (!count || count === 0) {
+      console.log('Wallet transaction already processed (duplicate webhook), skipping:', tx.id);
+      return ok({ success: true, duplicate: true });
+    }
+
     // Credit the wallet using the DB function
     const { error: creditError } = await supabase.rpc('credit_wallet', {
       p_user_id: tx.user_id,
@@ -145,6 +158,11 @@ Deno.serve(async (req) => {
     });
 
     if (creditError) {
+      // Rollback so webhook can retry
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'pending' })
+        .eq('id', tx.id);
       console.error('Error crediting wallet:', creditError);
       return ok({ error: 'credit_failed' });
     }

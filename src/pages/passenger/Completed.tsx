@@ -11,6 +11,7 @@ import { DbRide } from '@/types';
 import StarRating from '@/components/StarRating';
 import PaymentModal from '@/components/PaymentModal';
 import SimplixFooter from '@/components/SimplixFooter';
+import { useReferral } from '@/hooks/useReferral';
 
 const tipOptions = [2, 5, 10];
 
@@ -59,12 +60,14 @@ const Completed = () => {
   const location = useLocation();
   const { setRideStatus, setOrigin, setDestination, setCurrentPilot } = useApp();
   const { user, passengerProfile } = useAuthContext();
+  const { grantReferralDiscount } = useReferral(user?.id);
   
   const [rating, setRating] = useState(0);
   const [selectedTip, setSelectedTip] = useState<number | null>(null);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confettiTriggered, setConfettiTriggered] = useState(false);
+  const [confirmLowRating, setConfirmLowRating] = useState(false);
   const [rideData, setRideData] = useState<DbRide | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -77,7 +80,8 @@ const Completed = () => {
   // Fetch ride data, payment status, and wallet balance
   useEffect(() => {
     if (!rideId) {
-      setLoading(false);
+      toast.error('Corrida não encontrada.');
+      navigate('/passenger');
       return;
     }
 
@@ -122,6 +126,11 @@ const Completed = () => {
 
   const handlePayWithWallet = async () => {
     if (!rideId || !user?.id || !rideData) return;
+    const price = Number(rideData.price);
+    if (walletBalance !== null && walletBalance < price) {
+      toast.error(`Saldo insuficiente. Você precisa de R$ ${(price - walletBalance).toFixed(2).replace('.', ',')} a mais.`);
+      return;
+    }
     setPayingWithWallet(true);
     try {
       const { error } = await supabase.rpc('debit_wallet', {
@@ -148,6 +157,16 @@ const Completed = () => {
     }
   };
 
+  // Grant referral discount to the referrer when this passenger completes their first ride
+  useEffect(() => {
+    if (isPaid && user?.id) {
+      grantReferralDiscount(user.id).catch(() => {
+        // Silent fail — referral grant failure should never block the user
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPaid, user?.id]);
+
   // Trigger confetti when 5 stars AND tip is selected
   useEffect(() => {
     if (rating === 5 && selectedTip && !confettiTriggered) {
@@ -166,6 +185,11 @@ const Completed = () => {
   const handleSubmit = async () => {
     if (rating === 0) {
       toast.error('Por favor, selecione uma avaliação');
+      return;
+    }
+
+    if (rating <= 2 && !confirmLowRating) {
+      setConfirmLowRating(true);
       return;
     }
 
@@ -231,6 +255,7 @@ const Completed = () => {
         onClose={() => setShowPaymentModal(false)}
         rideId={rideId}
         amount={price}
+        tip={selectedTip ?? 0}
         passengerDeviceId={user?.id || rideData?.passenger_device_id || ''}
         pilotId={rideData?.pilot_user_id || undefined}
         passengerEmail={passengerProfile?.email || user?.email || ''}
@@ -308,7 +333,7 @@ const Completed = () => {
               {walletBalance !== null && walletBalance >= price && (
                 <button
                   onClick={handlePayWithWallet}
-                  disabled={payingWithWallet}
+                  disabled={payingWithWallet || isPaid}
                   className="w-full bg-primary/10 border border-primary/30 rounded-lg p-2.5 flex items-center justify-between text-primary active:bg-primary/20 transition-colors"
                 >
                   <div className="flex items-center gap-2">
@@ -328,7 +353,7 @@ const Completed = () => {
                 onClick={() => setShowPaymentModal(true)}
                 className="w-full bg-destructive/10 border border-destructive/30 rounded-lg p-2 flex items-center justify-center gap-2 text-destructive"
               >
-                <span className="text-xs font-medium">⚠️ Pagar com PIX</span>
+                <span className="text-xs font-medium">Pagar com PIX</span>
               </button>
             </div>
           )}
@@ -342,7 +367,7 @@ const Completed = () => {
           <StarRating value={rating} onChange={setRating} size="lg" />
           {rating > 0 && (
             <p className="text-center text-sm text-muted mt-2">
-              {rating === 5 ? '⭐ Excelente!' : rating >= 4 ? '😊 Boa viagem!' : rating >= 3 ? '👍 OK' : '😐 Pode melhorar'}
+              {rating === 5 ? 'Excelente!' : rating >= 4 ? 'Boa viagem!' : rating >= 3 ? 'OK' : 'Pode melhorar'}
             </p>
           )}
         </div>
@@ -352,13 +377,14 @@ const Completed = () => {
           placeholder="Deixe um comentário (opcional)"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
+          maxLength={300}
           className="w-full bg-background border border-border rounded-xl p-2.5 resize-none h-16 mb-4 focus:outline-none focus:ring-2 focus:ring-secondary/50 text-sm"
         />
 
         {/* Tip */}
         <div className="mb-5">
           <p className="text-center text-foreground font-medium text-sm mb-2">
-            Dar gorjeta ao piloto 💰
+            Dar gorjeta ao piloto
           </p>
           <div className="flex justify-center gap-2">
             {tipOptions.map((tip) => (
@@ -377,10 +403,36 @@ const Completed = () => {
           </div>
           {selectedTip && (
             <p className="text-center text-xs text-success mt-2 font-medium">
-              Obrigado! O piloto ficará muito feliz 🙏
+              Obrigado! O piloto ficará muito feliz
             </p>
           )}
         </div>
+
+        {/* Low rating confirmation inline banner */}
+        {confirmLowRating && (
+          <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 mb-3 text-center animate-scale-in">
+            <p className="text-sm font-semibold text-foreground mb-1">
+              Confirmar {rating} estrela{rating > 1 ? 's' : ''}?
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Isso será enviado ao piloto como feedback.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmLowRating(false)}
+                className="flex-1 py-2 rounded-xl border border-border text-sm font-medium text-foreground active:bg-muted/20 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { setConfirmLowRating(false); handleSubmit(); }}
+                className="flex-1 py-2 rounded-xl bg-warning text-warning-foreground text-sm font-semibold active:opacity-90 cursor-pointer"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Buttons */}
         <div className="space-y-2">

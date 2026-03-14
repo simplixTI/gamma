@@ -16,6 +16,7 @@ import SimplixFooter from '@/components/SimplixFooter';
 const menuItems = [
   { icon: History,    label: 'Histórico de Viagens', path: '/passenger/history' },
   { icon: Wallet,     label: 'Carteira',              path: '/passenger/wallet' },
+  { icon: CreditCard, label: 'Cartões salvos',        path: '/passenger/saved-cards' },
   { icon: Settings,   label: 'Configurações',         path: '/passenger/settings' },
   { icon: HelpCircle, label: 'Ajuda',                 path: '/passenger/help' },
 ];
@@ -184,7 +185,7 @@ const Profile = () => {
             <div className="flex-1 text-left min-w-0">
               <p className="font-semibold text-foreground text-sm">
                 {hasDiscount
-                  ? `🎉 ${pendingDiscounts.length} desconto${pendingDiscounts.length > 1 ? 's' : ''} de 30% disponível!`
+                  ? `${pendingDiscounts.length} desconto${pendingDiscounts.length > 1 ? 's' : ''} de 30% disponível!`
                   : 'Indique amigos, ganhe 30% off'}
               </p>
               <p className="text-xs text-muted mt-0.5">

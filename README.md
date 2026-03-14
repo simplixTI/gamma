@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Gamma - Transporte Aquático na Gigoia
 
 Gamma é o seu serviço de transporte aquático na Ilha da Gigoia, Barra da Tijuca. Solicite um barco e navegue com segurança e conforto.
@@ -30,3 +31,6 @@ npm run dev
 - `/src/pages/passenger` - Interfaces do passageiro
 - `/src/pages/pilot` - Interfaces do piloto
 - `/supabase/functions` - Edge Functions (pagamentos, webhooks)
+=======
+# gammaapp
+>>>>>>> 4fdedf960fae88976c2ca362a81531e72390d40c

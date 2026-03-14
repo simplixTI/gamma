@@ -59,12 +59,12 @@ const GIGOIA_MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
   // Hide transit lines and station icons
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  // Water — brand light blue (#ADE8F4)
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#ADE8F4' }] },
-  // Water label color
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#0077B6' }] },
-  // Off-white ice land (#F8FAFC)
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#F8FAFC' }] },
+  // Deep navy water — Uber-like dark ocean tone
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17497a' }] },
+  // Subtle water label color (pier names, water body names)
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a7fa5' }] },
+  // Off-white land (clean, high contrast against navy water)
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#f2f2ef' }] },
   // White roads
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
   // Simplified road labels (keep street names, remove clutter)

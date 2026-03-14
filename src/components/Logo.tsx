@@ -1,49 +1,63 @@
-import { Anchor } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   variant?: 'default' | 'white';
   showSubtitle?: boolean;
+  className?: string;
 }
 
-const Logo: React.FC<LogoProps> = ({ 
-  size = 'md', 
+const widths = { sm: 80, md: 120, lg: 180 };
+
+function useDarkMode() {
+  const [isDark, setIsDark] = useState(() =>
+    document.documentElement.classList.contains('dark')
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
+
+const Logo: React.FC<LogoProps> = ({
+  size = 'md',
   variant = 'default',
-  showSubtitle = false 
+  showSubtitle = false,
+  className,
 }) => {
-  const sizes = {
-    sm: { icon: 24, text: 'text-xl', subtitle: 'text-xs' },
-    md: { icon: 40, text: 'text-3xl', subtitle: 'text-sm' },
-    lg: { icon: 56, text: 'text-5xl', subtitle: 'text-base' },
-  };
+  const w = widths[size];
+  const isDark = useDarkMode();
+
+  // variant='white' keeps filter (used on dark backgrounds like PilotDashboard header)
+  // variant='default' uses logo-dark in dark mode, logo in light mode
+  const src = variant === 'white'
+    ? '/logo.png'
+    : isDark ? '/logo.dark.png' : '/logo.png';
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex items-center gap-3">
-        <div className={cn(
-          "p-2 rounded-xl",
-          variant === 'default' ? 'bg-secondary' : 'bg-primary-foreground/20'
-        )}>
-          <Anchor 
-            size={sizes[size].icon} 
-            className={variant === 'default' ? 'text-secondary-foreground' : 'text-primary-foreground'} 
-            strokeWidth={2.5}
-          />
-        </div>
-        <span className={cn(
-          "font-bold tracking-tight",
-          sizes[size].text,
-          variant === 'default' ? 'text-foreground' : 'text-primary-foreground'
-        )}>
-          Gamma
-        </span>
-      </div>
+    <div className={cn('flex flex-col items-start gap-1.5', className)}>
+      <img
+        src={src}
+        alt="Gamma"
+        width={w}
+        style={{
+          width: w,
+          height: 'auto',
+          filter: variant === 'white' ? 'brightness(0) invert(1)' : 'none',
+        }}
+        draggable={false}
+      />
+
       {showSubtitle && (
         <p className={cn(
-          "font-medium",
-          sizes[size].subtitle,
-          variant === 'default' ? 'text-muted' : 'text-primary-foreground/70'
+          'font-medium tracking-wide',
+          size === 'sm' ? 'text-[10px]' : size === 'md' ? 'text-xs' : 'text-sm',
+          variant === 'white' ? 'text-white/70' : 'text-muted-foreground',
         )}>
           Transporte aquático na Gigoia
         </p>
