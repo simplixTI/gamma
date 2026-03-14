@@ -1,0 +1,17 @@
+{
+  "project": "Gamma",
+  "version": "1.0.0",
+  "type": "brownfield",
+  "profile": "balanced",
+  "workflow": {
+    "autoCommit": true,
+    "parallelAgents": true,
+    "verificationLoop": true,
+    "requireApproval": false
+  },
+  "model": {
+    "planning": "sonnet",
+    "execution": "sonnet",
+    "verification": "haiku"
+  }
+}

@@ -1,0 +1,277 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* Light mode — #F8FAFC background, #0077B6 ocean blue accent */
+    --background: 210 40% 98%;
+    --foreground: 207 100% 7%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 207 100% 7%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 207 100% 7%;
+
+    --primary: 201 100% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 207 100% 7%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 214 32% 91%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 201 100% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 34%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 44%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 94%;
+    --ring: 201 100% 36%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 215 16% 47%;
+    --sidebar-primary: 207 100% 7%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 214 32% 94%;
+    --sidebar-accent-foreground: 207 100% 7%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 201 100% 36%;
+  }
+
+  .dark {
+    /* Dark mode — #001220 deep navy, #00CCFF cyan accent */
+    --background: 207 100% 7%;
+    --foreground: 0 0% 100%;
+
+    --card: 211 100% 12%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 211 100% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 191 100% 50%;
+    --primary-foreground: 207 100% 7%;
+
+    --secondary: 191 100% 50%;
+    --secondary-foreground: 207 100% 7%;
+
+    --muted: 209 28% 20%;
+    --muted-foreground: 207 19% 69%;
+
+    --accent: 191 100% 50%;
+    --accent-foreground: 207 100% 7%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 209 40% 18%;
+    --input: 209 40% 18%;
+    --ring: 191 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Safe area insets for mobile */
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 1rem);
+  }
+}
+
+@layer utilities {
+  /* Override: text-muted should render as readable secondary text, not the muted background color */
+  .text-muted {
+    color: hsl(var(--muted-foreground));
+  }
+
+
+  .glass {
+    @apply bg-card/90 backdrop-blur-lg;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-secondary to-accent bg-clip-text text-transparent;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Touch optimizations */
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
+
+  .touch-pan-y {
+    touch-action: pan-y;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply w-full bg-primary text-primary-foreground font-semibold py-3.5 rounded-xl 
+           hover:opacity-90 transition-all duration-200 shadow-lg active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply w-full bg-secondary text-secondary-foreground font-semibold py-3.5 rounded-xl 
+           hover:opacity-90 transition-all duration-200 shadow-lg active:scale-[0.98];
+  }
+
+  .btn-outline {
+    @apply w-full bg-transparent border-2 border-border text-foreground font-semibold py-3.5 rounded-xl 
+           hover:bg-muted/10 transition-all duration-200 active:scale-[0.98];
+  }
+
+  .card-elevated {
+    @apply bg-card rounded-xl shadow-md p-3 transition-all duration-200 hover:shadow-lg;
+  }
+
+  .bottom-sheet {
+    @apply bg-card rounded-t-2xl shadow-[0_-4px_30px_rgba(0,0,0,0.1)] transition-transform duration-300;
+  }
+
+  .input-field {
+    @apply w-full bg-background border border-border rounded-xl px-3.5 py-2.5 
+           focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary
+           placeholder:text-muted transition-all duration-200 text-sm;
+  }
+
+  .pulse-marker {
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  }
+
+  .boat-float {
+    animation: boat-float 3s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes boat-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(2deg);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Mobile viewport height fix */
+@supports (height: 100dvh) {
+  .h-screen {
+    height: 100dvh;
+  }
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l .planning/codebase/*.md)",
+      "Bash(node \"$HOME/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: map existing codebase\" --files .planning/codebase/STACK.md .planning/codebase/INTEGRATIONS.md .planning/codebase/ARCHITECTURE.md .planning/codebase/STRUCTURE.md .planning/codebase/CONVENTIONS.md .planning/codebase/TESTING.md .planning/codebase/CONCERNS.md)",
+      "Bash(npx supabase:*)",
+      "Bash(curl -s -X POST \"https://api.supabase.com/v1/projects/yrhdcigbbahylzfzbsnk/database/query\" -H \"Authorization: Bearer sbp_414378f1470b1e3d5319e3de60770622331a51f6\" -H \"Content-Type: application/json\" -d '{:*)",
+      "Bash(grep -r \"google\\\\|GOOGLE\\\\|maps\\\\|MAP\" 'c:/Users/lucas/OneDrive/Desktop/CLAUDE CODE/GAMMA APP' --include=*.json --include=*.ts --include=*.tsx --include=*.env* -l)"
+    ]
+  }
+}
