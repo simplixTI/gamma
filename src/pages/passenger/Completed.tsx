@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Check, Loader2, Clock, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -74,6 +74,7 @@ const Completed = () => {
   const [isPaid, setIsPaid] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [payingWithWallet, setPayingWithWallet] = useState(false);
+  const payingWithWalletRef = useRef(false);
 
   const rideId = location.state?.rideId;
 
@@ -81,13 +82,17 @@ const Completed = () => {
   useEffect(() => {
     if (!rideId) {
       toast.error('Corrida não encontrada.');
+      setRideStatus('idle');
+      setOrigin(null);
+      setDestination(null);
+      setCurrentPilot(null);
       navigate('/passenger');
       return;
     }
 
     const checkRideAndPayment = async () => {
       const [rideResult, walletResult] = await Promise.all([
-        supabase.from('rides').select('*').eq('id', rideId).single(),
+        supabase.from('rides').select('id, status, origin_name, destination_name, pilot_name, pilot_user_id, price, estimated_time, started_at, completed_at, payment_status, passenger_device_id').eq('id', rideId).single(),
         user?.id
           ? supabase
               .from('passenger_profiles')
@@ -122,15 +127,18 @@ const Completed = () => {
     };
 
     checkRideAndPayment();
-  }, [rideId, user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId, user?.id, navigate]);
 
   const handlePayWithWallet = async () => {
+    if (payingWithWalletRef.current) return;
     if (!rideId || !user?.id || !rideData) return;
     const price = Number(rideData.price);
     if (walletBalance !== null && walletBalance < price) {
       toast.error(`Saldo insuficiente. Você precisa de R$ ${(price - walletBalance).toFixed(2).replace('.', ',')} a mais.`);
       return;
     }
+    payingWithWalletRef.current = true;
     setPayingWithWallet(true);
     try {
       const { error } = await supabase.rpc('debit_wallet', {
@@ -148,6 +156,8 @@ const Completed = () => {
         .eq('id', rideId);
 
       setIsPaid(true);
+      // Reflect new balance immediately so the UI doesn't show stale amount
+      setWalletBalance((prev) => (prev !== null ? Math.max(0, prev - Number(rideData.price)) : null));
       toast.success('Pago com Gamma Cash!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao pagar';

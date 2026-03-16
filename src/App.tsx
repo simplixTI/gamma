@@ -38,9 +38,17 @@ import PilotProfile from "./pages/pilot/PilotProfile";
 import PilotProfileEdit from "./pages/pilot/PilotProfileEdit";
 import Earnings from "./pages/pilot/Earnings";
 import PilotSettings from "./pages/pilot/PilotSettings";
+import PilotDocumentUpload from "./pages/pilot/PilotDocumentUpload";
 import TermsOfUse from "./pages/TermsOfUse";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import AdminLogin from "./pages/admin/AdminLogin";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminPilotApproval from "./pages/admin/AdminPilotApproval";
+import AdminFinancial from "./pages/admin/AdminFinancial";
+import AdminAds from "./pages/admin/AdminAds";
 
 const queryClient = new QueryClient();
 
@@ -76,7 +84,7 @@ const App = () => (
               <AndroidBackHandler />
               <ConnectionStatusBanner />
               <Toaster />
-              <Sonner />
+              <Sonner position="top-center" />
               <Routes>
                 <Route path="/" element={<Landing />} />
                 
@@ -203,9 +211,24 @@ const App = () => (
                     <PilotSettings />
                   </ProtectedRoute>
                 } />
+                <Route path="/pilot/documents" element={
+                  <ProtectedRoute requiredRole="pilot">
+                    <PilotDocumentUpload />
+                  </ProtectedRoute>
+                } />
                 
                 <Route path="/terms" element={<TermsOfUse />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
+
+                {/* Admin routes */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin" element={<AdminLayout />}>
+                  <Route index element={<AdminDashboard />} />
+                  <Route path="users" element={<AdminUsers />} />
+                  <Route path="pilots" element={<AdminPilotApproval />} />
+                  <Route path="financial" element={<AdminFinancial />} />
+                  <Route path="ads" element={<AdminAds />} />
+                </Route>
 
                 <Route path="*" element={<NotFound />} />
               </Routes>

@@ -36,9 +36,9 @@ const RideHistory = () => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      // Filter by user_id first, then by device_id as fallback
+      // Use user_id when authenticated (strict match), device_id only for anonymous sessions
       if (userId) {
-        query = query.or(`passenger_user_id.eq.${userId},passenger_device_id.eq.${deviceId}`);
+        query = query.eq('passenger_user_id', userId);
       } else {
         query = query.eq('passenger_device_id', deviceId);
       }

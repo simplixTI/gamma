@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 /**
  * Handles the OAuth redirect from Google.
@@ -9,67 +10,76 @@ import { supabase } from '@/integrations/supabase/client';
  */
 const AuthCallback = () => {
   const navigate = useNavigate();
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    const handleCallback = async () => {
-      // Give Supabase a moment to process the OAuth code from the URL
-      const { data: { session } } = await supabase.auth.getSession();
+    mountedRef.current = true;
 
-      if (!session) {
-        // If no session yet, listen for it
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          async (_event, session) => {
-            if (session) {
-              subscription.unsubscribe();
-              await redirectByRole(session.user.id);
-            }
-          }
-        );
-        return;
+    const redirectByRole = async (userId: string, attempt = 0) => {
+      if (!mountedRef.current) return;
+
+      try {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .single();
+
+        if (!mountedRef.current) return;
+
+        if (data?.role === 'pilot') {
+          navigate('/pilot', { replace: true });
+        } else if (data?.role === 'passenger') {
+          navigate('/passenger', { replace: true });
+        } else if (attempt < 5) {
+          // Role not yet created — retry with backoff (createOAuthProfile is running in useAuth)
+          const delay = Math.min(500 * Math.pow(2, attempt), 4000);
+          setTimeout(() => redirectByRole(userId, attempt + 1), delay);
+        } else {
+          // All retries exhausted
+          toast.error('Erro ao completar login. Tente novamente.');
+          navigate('/', { replace: true });
+        }
+      } catch {
+        if (mountedRef.current) {
+          toast.error('Erro ao verificar conta. Tente novamente.');
+          navigate('/', { replace: true });
+        }
       }
-
-      await redirectByRole(session.user.id);
     };
 
-    const redirectByRole = async (userId: string) => {
-      const { data } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
+    const handleCallback = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
 
-      if (data?.role === 'pilot') {
-        navigate('/pilot', { replace: true });
-      } else if (data?.role === 'passenger') {
-        navigate('/passenger', { replace: true });
-      } else {
-        // Role not yet created (createOAuthProfile is running in useAuth)
-        // Check pending_oauth_role from sessionStorage (set in useAuth signInWithGoogle)
-        const pendingRole = sessionStorage.getItem('pending_oauth_role');
-        // Wait briefly and retry
-        setTimeout(async () => {
-          const { data: retryData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', userId)
-            .single();
+        if (error) throw error;
 
-          if (retryData?.role === 'pilot') {
-            navigate('/pilot', { replace: true });
-          } else if (retryData?.role === 'passenger') {
-            navigate('/passenger', { replace: true });
-          } else if (pendingRole === 'pilot') {
-            navigate('/pilot', { replace: true });
-          } else if (pendingRole === 'passenger') {
-            navigate('/passenger', { replace: true });
-          } else {
-            navigate('/', { replace: true });
-          }
-        }, 1500);
+        if (!session) {
+          // If no session yet, listen for it
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (_event, newSession) => {
+              if (newSession) {
+                subscription.unsubscribe();
+                await redirectByRole(newSession.user.id);
+              }
+            }
+          );
+          // Cleanup subscription on unmount
+          return () => subscription.unsubscribe();
+        }
+
+        await redirectByRole(session.user.id);
+      } catch {
+        if (mountedRef.current) {
+          toast.error('Erro ao processar login. Tente novamente.');
+          navigate('/', { replace: true });
+        }
       }
     };
 
     handleCallback();
+
+    return () => { mountedRef.current = false; };
   }, [navigate]);
 
   return (

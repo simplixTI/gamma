@@ -45,9 +45,9 @@ const WalletPage = () => {
   const [generatingPix, setGeneratingPix] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const loadWallet = useCallback(async () => {
+  const loadWallet = useCallback(async (silent = false) => {
     if (!user?.id) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
 
     const [profileResult, txResult] = await Promise.all([
       supabase
@@ -106,7 +106,11 @@ const WalletPage = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[Wallet] Realtime channel error — balance updates may be delayed');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -118,8 +122,10 @@ const WalletPage = () => {
     setGeneratingPix(true);
 
     try {
+      // FIX [MEDIUM]: Remove userId from body — the edge function ignores it and
+      // always derives userId from the authenticated JWT. Sending it was misleading.
       const { data, error } = await supabase.functions.invoke('wallet-topup', {
-        body: { userId: user.id, amount: topUpAmount },
+        body: { amount: topUpAmount },
       });
 
       if (error) throw error;
@@ -131,20 +137,8 @@ const WalletPage = () => {
           txId: data.transactionId,
         });
 
-        // Save pending transaction record
-        await supabase.from('wallet_transactions').insert({
-          user_id: user.id,
-          type: 'topup',
-          amount: topUpAmount,
-          balance_after: (balance ?? 0) + topUpAmount,
-          description: `Recarga via PIX`,
-          pix_qr_code: data.qrCode,
-          pix_copy_paste: data.copyPaste,
-          pix_transaction_id: data.transactionId,
-          status: 'pending',
-        });
-
-        await loadWallet();
+        // Edge Function already created the pending wallet_transactions row — refresh silently
+        await loadWallet(true);
       } else {
         throw new Error(data.error || 'Erro ao gerar PIX');
       }
@@ -158,7 +152,19 @@ const WalletPage = () => {
 
   const handleCopy = async () => {
     if (!pixData?.copyPaste) return;
-    await navigator.clipboard.writeText(pixData.copyPaste);
+    try {
+      await navigator.clipboard.writeText(pixData.copyPaste);
+    } catch {
+      // Fallback for HTTP or when Clipboard API is unavailable
+      const ta = document.createElement('textarea');
+      ta.value = pixData.copyPaste;
+      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     toast.success('Código PIX copiado!');
     setTimeout(() => setCopied(false), 3000);
@@ -340,7 +346,7 @@ const WalletPage = () => {
                       className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                       onChange={(e) => {
                         const v = parseFloat(e.target.value);
-                        if (!isNaN(v) && v >= 5) setTopUpAmount(v);
+                        if (!isNaN(v) && v >= 5 && v <= 1000) setTopUpAmount(v);
                       }}
                     />
                   </div>
@@ -406,7 +412,8 @@ const WalletPage = () => {
 
                   <div className="flex items-center justify-center gap-2 text-muted text-sm mb-5">
                     <Clock className="w-4 h-4" />
-                    <span>Expira em 30 minutos • O saldo é creditado automaticamente</span>
+                    {/* FIX [LOW]: wallet-topup uses getPixExpiry24h() — 24h, not 30min */}
+                    <span>Expira em 24 horas • O saldo é creditado automaticamente</span>
                   </div>
 
                   <Button

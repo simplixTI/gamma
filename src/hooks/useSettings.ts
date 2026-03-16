@@ -35,7 +35,7 @@ export const useSettings = () => {
       try {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('*')
+          .select('notifications, sound_alerts, auto_navigation, dark_mode, share_location')
           .eq('user_id', user.id)
           .maybeSingle();
 

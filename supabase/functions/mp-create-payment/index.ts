@@ -10,17 +10,10 @@ const MP_API = 'https://api.mercadopago.com';
 function getPixExpiry(): string {
   const d = new Date();
   d.setMinutes(d.getMinutes() + 30);
-  // Format as ISO with -03:00 offset (Brazil)
+  // Subtract 3h for BRT, then print as if UTC with -03:00 suffix
+  const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const year = d.getUTCFullYear();
-  const month = pad(d.getUTCMonth() + 1);
-  const day = pad(d.getUTCDate());
-  // subtract 3h for BRT
-  let hour = d.getUTCHours() - 3;
-  if (hour < 0) hour += 24;
-  const minute = pad(d.getUTCMinutes());
-  const second = pad(d.getUTCSeconds());
-  return `${year}-${month}-${day}T${pad(hour)}:${minute}:${second}.000-03:00`;
+  return `${brt.getUTCFullYear()}-${pad(brt.getUTCMonth() + 1)}-${pad(brt.getUTCDate())}T${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}:${pad(brt.getUTCSeconds())}.000-03:00`;
 }
 
 function mapMpStatus(mpStatus: string): string {
@@ -51,6 +44,25 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // Authenticate caller — require valid JWT (CWE-639)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const userClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const {
       rideId,
@@ -86,6 +98,62 @@ Deno.serve(async (req) => {
     }
 
     const totalAmount = Number(amount);
+
+    // Server-side price + ownership validation — re-fetch ride to prevent tampering
+    const { data: rideRow, error: rideErr } = await supabase
+      .from('rides')
+      .select('price, status, passenger_user_id')
+      .eq('id', rideId)
+      .maybeSingle();
+
+    if (rideErr || !rideRow) {
+      return new Response(JSON.stringify({ success: false, error: 'ride_not_found' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Verify authenticated user owns this ride (CWE-639)
+    if (rideRow.passenger_user_id && rideRow.passenger_user_id !== user.id) {
+      console.error(`Unauthorized payment attempt: user ${user.id} for ride owned by ${rideRow.passenger_user_id}`);
+      return new Response(JSON.stringify({ success: false, error: 'not_your_ride' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // FIX [MEDIUM]: Allow in_progress and completed so passengers can pay at any ride stage.
+    // Previously blocked at 'in_progress', making payment impossible once the ride started.
+    if (!['pending', 'accepted', 'pilot_arriving', 'in_progress', 'completed'].includes(rideRow.status)) {
+      return new Response(JSON.stringify({ success: false, error: 'ride_not_payable' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Rate limit: prevent duplicate PIX codes within 30 seconds (DoS/cost protection)
+    if (paymentMethod === 'pix') {
+      const { count: recentPending } = await supabase
+        .from('payments')
+        .select('id', { count: 'exact', head: true })
+        .eq('ride_id', rideId)
+        .eq('payment_method', 'pix')
+        .eq('status', 'pending')
+        .gte('created_at', new Date(Date.now() - 30_000).toISOString());
+      if (recentPending && recentPending > 0) {
+        return new Response(JSON.stringify({ success: false, error: 'pix_rate_limited', message: 'PIX já gerado. Aguarde 30 segundos antes de gerar um novo.' }), {
+          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // Use integer-cent comparison to avoid floating-point rounding issues
+    const paidCents = Math.round(totalAmount * 100);
+    const expectedCents = Math.round(Number(rideRow.price) * 100);
+    if (paidCents !== expectedCents) {
+      console.error(`Amount mismatch: client sent ${totalAmount}, DB has ${rideRow.price}`);
+      return new Response(JSON.stringify({ success: false, error: 'amount_mismatch' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const notificationUrl = `${SUPABASE_URL}/functions/v1/mp-webhook`;
     // Single webhook URL for all MP events — routes internally by external_reference prefix
 

@@ -7,6 +7,16 @@ const corsHeaders = {
 
 const MP_API = 'https://api.mercadopago.com';
 
+/**
+ * Verify Mercado Pago webhook signature.
+ *
+ * MP signs using: HMAC-SHA256( key=secret, message="id:{data.id};request-id:{x-request-id};ts:{ts};" )
+ * Reference: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
+ *
+ * FIX [HIGH]: The original implementation used the Stripe-style `{ts}.{rawBody}` format,
+ * which is incorrect for Mercado Pago. This caused all valid MP webhooks to fail signature
+ * verification (if the secret was set), silently dropping all payment confirmations.
+ */
 async function verifyMpSignature(
   req: Request,
   rawBody: string,
@@ -16,13 +26,30 @@ async function verifyMpSignature(
   if (!xSignature) return false;
 
   const parts = Object.fromEntries(
-    xSignature.split(',').map((p) => p.trim().split('=')),
+    xSignature.split(',').map((p) => {
+      const idx = p.indexOf('=');
+      return idx === -1 ? [p.trim(), ''] : [p.slice(0, idx).trim(), p.slice(idx + 1).trim()];
+    }),
   );
   const ts = parts['ts'];
   const v1 = parts['v1'];
   if (!ts || !v1) return false;
 
-  const message = `${ts}.${rawBody}`;
+  // Parse data.id from the body for the MP signature scheme
+  let dataId = '';
+  try {
+    const parsed = JSON.parse(rawBody);
+    dataId = String(parsed?.data?.id || '');
+  } catch {
+    // ignore parse errors — will fail verification
+  }
+
+  // x-request-id header from MP
+  const requestId = req.headers.get('x-request-id') || '';
+
+  // MP canonical message format
+  const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
+
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
   const msgData = encoder.encode(message);
@@ -35,7 +62,13 @@ async function verifyMpSignature(
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  return computed === v1;
+  // Constant-time comparison to prevent timing attacks on signature verification
+  if (computed.length !== v1.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ v1.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function ok(body: Record<string, unknown> = { received: true }): Response {
@@ -68,8 +101,61 @@ async function handleRidePayment(
         .from('payments')
         .update({ status: 'failed' })
         .eq('mp_payment_id', mpPaymentId);
+      // Flag completed payments for refund (MP issued refund or chargeback)
+      if (mpPayment.status === 'refunded' || mpPayment.status === 'charged_back') {
+        await supabase.rpc('request_payment_refund', {
+          p_ride_id: rideId,
+          p_reason: String(mpPayment.status),
+        });
+      }
     }
     return ok({ status: mpPayment.status });
+  }
+
+  // Atomic claim: transition pending/in_process → processing.
+  // Two simultaneous webhooks both attempt this; only one gets count > 0.
+  const { count: claimed } = await supabase
+    .from('payments')
+    .update({ status: 'processing' })
+    .eq('mp_payment_id', mpPaymentId)
+    .in('status', ['pending', 'in_process'])
+    .select('id', { count: 'exact', head: true });
+
+  if (!claimed || claimed === 0) {
+    const { data: existingPayment } = await supabase
+      .from('payments')
+      .select('status')
+      .eq('mp_payment_id', mpPaymentId)
+      .maybeSingle();
+
+    if (existingPayment?.status === 'completed') {
+      return ok({ success: true, type: 'ride', duplicate: true });
+    }
+    return ok({ error: 'payment_not_claimable', paymentStatus: existingPayment?.status ?? 'not_found' });
+  }
+
+  // Verify ride exists and amount matches
+  // FIX [MEDIUM]: Previously both !rideRow and amount mismatch returned 'amount_mismatch'.
+  // Now each case returns the correct error. Both also roll back payment to 'failed'.
+  const { data: rideRow } = await supabase
+    .from('rides')
+    .select('price')
+    .eq('id', rideId)
+    .single();
+
+  if (!rideRow) {
+    console.error('Ride not found for webhook payment:', rideId);
+    await supabase.from('payments').update({ status: 'failed' }).eq('mp_payment_id', mpPaymentId);
+    return ok({ error: 'ride_not_found' });
+  }
+
+  const paidAmount = Number(mpPayment.transaction_amount);
+  const expectedAmount = Number(rideRow.price);
+
+  if (Math.abs(paidAmount - expectedAmount) > 0.01) {
+    console.error('Amount mismatch for ride payment. Paid:', paidAmount, 'Expected:', expectedAmount);
+    await supabase.from('payments').update({ status: 'failed' }).eq('mp_payment_id', mpPaymentId);
+    return ok({ error: 'amount_mismatch' });
   }
 
   await supabase
@@ -82,7 +168,6 @@ async function handleRidePayment(
     .update({ payment_status: 'paid' })
     .eq('id', rideId);
 
-  console.log(`Ride ${rideId} marked as paid`);
   return ok({ success: true, type: 'ride', rideId });
 }
 
@@ -92,6 +177,20 @@ async function handleWalletTopup(
   mpPaymentId: string,
 ): Promise<Response> {
   if (mpPayment.status !== 'approved') {
+    const failedTopupStatuses = ['rejected', 'cancelled', 'refunded', 'charged_back'];
+    if (failedTopupStatuses.includes(String(mpPayment.status))) {
+      // Mark the pending wallet transaction as failed so it doesn't stay orphaned
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'failed', completed_at: new Date().toISOString() })
+        .eq('mp_payment_id', mpPaymentId)
+        .eq('status', 'pending');
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'failed', completed_at: new Date().toISOString() })
+        .eq('pix_transaction_id', mpPaymentId)
+        .eq('status', 'pending');
+    }
     return ok({ status: mpPayment.status });
   }
 
@@ -114,7 +213,7 @@ async function handleWalletTopup(
   }
 
   if (!tx) {
-    console.error('Wallet transaction not found for MP payment:', mpPaymentId);
+    console.error('Wallet transaction not found for MP payment');
     return ok({ error: 'transaction_not_found' });
   }
 
@@ -128,7 +227,7 @@ async function handleWalletTopup(
     .select('id', { count: 'exact', head: true });
 
   if (!count || count === 0) {
-    console.log('Wallet transaction already processed (duplicate webhook), skipping:', tx.id);
+    console.log('Wallet transaction already processed (duplicate webhook), skipping');
     return ok({ success: true, type: 'wallet', duplicate: true });
   }
 
@@ -149,7 +248,7 @@ async function handleWalletTopup(
     return ok({ error: 'credit_failed' });
   }
 
-  console.log(`Wallet credited: user ${tx.user_id}, amount ${tx.amount}`);
+  console.log('Wallet credited successfully');
   return ok({ success: true, type: 'wallet' });
 }
 
@@ -165,18 +264,25 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+    if (!MP_ACCESS_TOKEN) {
+      console.error('MP_ACCESS_TOKEN not configured');
+      return ok({ error: 'service_not_configured' });
+    }
+
+    if (!MP_WEBHOOK_SECRET) {
+      console.error('MP_WEBHOOK_SECRET not configured — rejecting all webhook calls');
+      return ok({ error: 'webhook_not_configured' });
+    }
+
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     const rawBody = await req.text();
-    console.log('mp-webhook received:', rawBody.substring(0, 200));
+    console.log('mp-webhook received');
 
-    // Verify HMAC signature (skip in dev if secret not configured)
-    if (MP_WEBHOOK_SECRET) {
-      const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
-      if (!valid) {
-        console.error('Invalid MP webhook signature');
-        return ok({ error: 'invalid_signature' });
-      }
+    const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
+    if (!valid) {
+      console.error('Invalid MP webhook signature');
+      return ok({ error: 'invalid_signature' });
     }
 
     const body = JSON.parse(rawBody);
@@ -198,18 +304,14 @@ Deno.serve(async (req) => {
     });
 
     if (!mpRes.ok) {
-      console.error('Failed to fetch MP payment:', mpPaymentId, mpRes.status);
+      console.error('Failed to fetch MP payment:', mpRes.status);
       return ok({ error: 'mp_fetch_failed' });
     }
 
     const mpPayment = await mpRes.json();
     const externalRef = String(mpPayment.external_reference || '');
 
-    console.log('MP payment:', {
-      id: mpPaymentId,
-      status: mpPayment.status,
-      ref: externalRef,
-    });
+    console.log('MP payment status:', mpPayment.status);
 
     // Route by external_reference prefix
     if (externalRef.startsWith('ride-')) {
@@ -223,6 +325,11 @@ Deno.serve(async (req) => {
 
   } catch (error: unknown) {
     console.error('mp-webhook error:', error);
-    return ok({ error: 'internal_error' });
+    // Return 500 so Mercado Pago retries on transient failures (DB down, network errors).
+    // Only return 200 for known business-logic errors handled inside the handlers above.
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

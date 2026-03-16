@@ -240,7 +240,7 @@ const PassengerAuth = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !isSubmitting) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -451,6 +451,7 @@ const PassengerAuth = () => {
                             <Input
                               id="phone"
                               type="tel"
+                              inputMode="numeric"
                               placeholder="(21) 99999-9999"
                               value={phone}
                               onChange={(e) => setPhone(formatPhone(e.target.value))}
@@ -549,6 +550,7 @@ const PassengerAuth = () => {
                     <Input
                       id="registerPhone"
                       type="tel"
+                      inputMode="numeric"
                       placeholder="(21) 99999-9999"
                       value={phone}
                       onChange={(e) => setPhone(formatPhone(e.target.value))}
@@ -582,6 +584,7 @@ const PassengerAuth = () => {
                       value={cpf}
                       onChange={(e) => setCpf(formatCPF(e.target.value))}
                       className="pl-10"
+                      inputMode="numeric"
                     />
                   </div>
                   {cpf.replace(/\D/g, '').length === 11 && !validateCPF(cpf) && (

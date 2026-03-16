@@ -4,6 +4,7 @@ import { Search, Clock, ChevronRight, Gift, History, MapPin, Zap } from 'lucide-
 import { useApp } from '@/contexts/AppContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useReferral } from '@/hooks/useReferral';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { getCurrentRide } from '@/services/rideService';
 import { supabase } from '@/integrations/supabase/client';
 import { locations } from '@/data/mockData';
@@ -17,6 +18,7 @@ const PassengerHome = () => {
   const { setOrigin, setDestination, setCurrentPilot, setRideStatus } = useApp();
   const { user, passengerProfile } = useAuthContext();
   const { hasDiscount, pendingDiscounts } = useReferral(user?.id);
+  usePushNotifications(user?.id);
   const [activeRide, setActiveRide] = useState<DbRide | null>(null);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ const PassengerHome = () => {
           const { data: pp } = await supabase
             .from('pilot_profiles')
             .select('rating')
-            .eq('user_id', ride.pilot_id)
+            .eq('id', ride.pilot_id)
             .maybeSingle();
           if (pp?.rating) pilotRating = pp.rating;
 
@@ -72,8 +74,15 @@ const PassengerHome = () => {
     };
 
     checkOngoingRide();
-    const interval = setInterval(checkOngoingRide, 5000);
-    return () => clearInterval(interval);
+    // Only poll while a ride may be active; once resolved to null, stop polling.
+    let stopPolling = false;
+    const interval = setInterval(() => {
+      if (!stopPolling) checkOngoingRide();
+    }, 5000);
+    return () => {
+      stopPolling = true;
+      clearInterval(interval);
+    };
   }, [user?.id, setOrigin, setDestination, setCurrentPilot, setRideStatus]);
 
   const handleRideCancelled = () => {
@@ -120,6 +129,7 @@ const PassengerHome = () => {
                 src={passengerProfile.photo_url}
                 alt="Perfil"
                 className="w-full h-full object-cover"
+                loading="lazy"
               />
             ) : (
               <div className="w-full h-full bg-primary/10 flex items-center justify-center">

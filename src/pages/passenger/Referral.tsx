@@ -12,16 +12,27 @@ const Referral = () => {
   const { referralCode, pendingDiscounts, hasDiscount, loading } = useReferral(user?.id);
   const [copied, setCopied] = useState(false);
 
+  const fallbackCopy = (text: string) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); } catch { /* ignore */ }
+    document.body.removeChild(ta);
+  };
+
   const handleCopy = async () => {
     if (!referralCode) return;
     try {
       await navigator.clipboard.writeText(referralCode);
-      setCopied(true);
-      toast.success('Código copiado!');
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Não foi possível copiar');
+      fallbackCopy(referralCode);
     }
+    setCopied(true);
+    toast.success('Código copiado!');
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const referralLink = referralCode
@@ -34,7 +45,11 @@ const Referral = () => {
     if (navigator.share) {
       await navigator.share({ title: 'Gamma — Transporte aquático', text, url: referralLink });
     } else {
-      await navigator.clipboard.writeText(referralLink);
+      try {
+        await navigator.clipboard.writeText(referralLink);
+      } catch {
+        fallbackCopy(referralLink);
+      }
       toast.success('Link copiado para compartilhar!');
     }
   };
@@ -43,12 +58,12 @@ const Referral = () => {
     if (!referralLink) return;
     try {
       await navigator.clipboard.writeText(referralLink);
-      setCopied(true);
-      toast.success('Link copiado!');
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error('Não foi possível copiar');
+      fallbackCopy(referralLink);
     }
+    setCopied(true);
+    toast.success('Link copiado!');
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (

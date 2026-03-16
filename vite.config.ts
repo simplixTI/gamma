@@ -13,6 +13,26 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Stub the native-only Capacitor push plugin for web/dev builds.
+      // On iOS/Android Capacitor resolves the real plugin at runtime.
+      "@capacitor/push-notifications": path.resolve(__dirname, "./src/mocks/capacitor-push-notifications.ts"),
+    },
+  },
+  build: {
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split heavy mapping library into its own async chunk
+          'vendor-maps': ['@react-google-maps/api'],
+          // Split charting library — only used in Earnings/History screens
+          'vendor-charts': ['recharts'],
+          // Core React runtime
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // Supabase client
+          'vendor-supabase': ['@supabase/supabase-js'],
+        },
+      },
     },
   },
 }));

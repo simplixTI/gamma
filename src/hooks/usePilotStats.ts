@@ -34,12 +34,14 @@ export const usePilotStats = () => {
           .from('rides')
           .select('id, price, tip, completed_at')
           .eq('pilot_id', currentPilotId)
-          .eq('status', 'completed'),
+          .eq('status', 'completed')
+          .eq('payment_status', 'paid'),
         supabase
           .from('rides')
           .select('id, price, tip')
           .eq('pilot_id', currentPilotId)
           .eq('status', 'completed')
+          .eq('payment_status', 'paid')
           .gte('completed_at', today.toISOString()),
       ]);
 
@@ -83,7 +85,7 @@ export const usePilotStats = () => {
     if (!pilotId) return;
 
     const channel = supabase
-      .channel('pilot-stats')
+      .channel(`pilot-stats-${pilotId}`)
       .on(
         'postgres_changes',
         {

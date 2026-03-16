@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Copy, Check, Clock, QrCode, CreditCard, Loader2, Star, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -73,6 +73,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   onPaymentComplete,
 }) => {
   const { user } = useAuthContext();
+  const pixCreationInProgressRef = useRef(false);
+  const pixConfirmInProgressRef = useRef(false);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
   const [pixLoading, setPixLoading] = useState(false);
   const [pixData, setPixData] = useState<PixData | null>(null);
@@ -96,12 +98,16 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const loadSavedCards = useCallback(async () => {
     if (!user?.id) return;
     setSavedCardsLoading(true);
-    const { data } = await supabase
+    const { data, error: scError } = await supabase
       .from('saved_cards')
       .select('*')
       .eq('user_id', user.id)
       .order('is_default', { ascending: false })
       .order('created_at', { ascending: false });
+    if (scError) {
+      console.error('Failed to load saved cards:', scError);
+      toast.error('Não foi possível carregar cartões salvos.');
+    }
     if (data) {
       setSavedCards(data as SavedCard[]);
       // Auto-select default card
@@ -110,6 +116,21 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
     setSavedCardsLoading(false);
   }, [user?.id]);
+
+  // Reset state when modal closes or rideId changes (prevents stale QR from previous ride)
+  useEffect(() => {
+    if (!isOpen) {
+      setPixData(null);
+      setCardResult(null);
+      setCard({ number: '', name: '', expiry: '', cvv: '' });
+      setSavedCardCvv('');
+      setShowNewCardForm(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setPixData(null);
+  }, [rideId]);
 
   // Sync tab with initialTab when modal opens
   useEffect(() => {
@@ -133,6 +154,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [isOpen, tab, loadSavedCards]);
 
   const createPixPayment = async () => {
+    if (pixCreationInProgressRef.current) return;
+    pixCreationInProgressRef.current = true;
     setPixLoading(true);
     setPixData(null);
     try {
@@ -162,6 +185,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       toast.error('Erro ao gerar pagamento PIX');
     } finally {
       setPixLoading(false);
+      pixCreationInProgressRef.current = false;
     }
   };
 
@@ -186,46 +210,39 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   const handleConfirmPix = async () => {
+    if (pixConfirmInProgressRef.current) return;
+    pixConfirmInProgressRef.current = true;
     setCheckingPayment(true);
     try {
-      const { error } = await supabase
+      // Poll the specific payment record (by ID) to see if webhook confirmed it
+      const { data: payment } = await supabase
         .from('payments')
-        .update({ status: 'completed', paid_at: new Date().toISOString() })
-        .eq('ride_id', rideId)
-        .eq('status', 'pending');
+        .select('status')
+        .eq('id', pixData?.paymentId ?? '')
+        .maybeSingle();
 
-      if (error) throw error;
-
-      toast.success('Pagamento confirmado!');
-      onPaymentComplete?.();
-      onClose();
+      if (payment?.status === 'completed') {
+        toast.success('Pagamento confirmado!');
+        onPaymentComplete?.();
+        onClose();
+      } else {
+        // Not confirmed yet by webhook — show friendly message
+        toast.info('Pagamento ainda não detectado. Aguarde alguns segundos e tente novamente.');
+      }
     } catch (err) {
-      console.error('Error confirming payment:', err);
-      toast.error('Erro ao confirmar pagamento');
+      console.error('Error checking payment:', err);
+      toast.error('Erro ao verificar pagamento. Tente novamente.');
     } finally {
       setCheckingPayment(false);
+      pixConfirmInProgressRef.current = false;
     }
   };
 
-  const persistSavedCard = async (cardData: {
-    last_four: string;
-    brand: string;
-    holder_name: string;
-    expiry_month: string;
-    expiry_year: string;
-  }) => {
-    if (!user?.id) return;
-    const isFirst = savedCards.length === 0;
-    await supabase.from('saved_cards').insert({
-      user_id: user.id,
-      last_four: cardData.last_four,
-      brand: cardData.brand,
-      holder_name: cardData.holder_name,
-      expiry_month: cardData.expiry_month,
-      expiry_year: cardData.expiry_year,
-      is_default: isFirst,
-    });
-  };
+  // NOTE: Card saving is handled entirely server-side in mp-tokenize-and-pay
+  // (via the MP Customers API, which stores mp_card_id + mp_customer_id).
+  // A client-side persistSavedCard function was previously here but has been removed —
+  // it saved cards without mp_card_id/mp_customer_id, creating records that would
+  // immediately require re-entry (the requiresFullCard fallback path).
 
   const handleCardPayment = async () => {
     const rawNumber = card.number.replace(/\s/g, '');
@@ -258,6 +275,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           passengerName,
           passengerDeviceId,
           pilotId,
+          saveCard,
+          userId: user?.id,
         },
       });
 
@@ -265,13 +284,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
       if (data.success && data.status === 'approved') {
         if (saveCard) {
-          await persistSavedCard({
-            last_four: rawNumber.slice(-4),
-            brand: data.brand || 'unknown',
-            holder_name: card.name.trim(),
-            expiry_month: expiryMonth,
-            expiry_year: expiryYear,
-          });
+          // Card was saved server-side via MP Customers API — refresh the list
+          await loadSavedCards();
         }
         setCardResult({ success: true, message: 'Pagamento aprovado!' });
         toast.success('Pagamento aprovado!');
@@ -280,7 +294,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           onClose();
         }, 1500);
       } else if (data.status === 'in_process') {
-        setCardResult({ success: true, message: 'Pagamento em análise. Você receberá uma confirmação em breve.' });
+        toast.info('Pagamento em análise. Você receberá uma confirmação em breve.');
+        setTimeout(() => {
+          onPaymentComplete?.();
+          onClose();
+        }, 2000);
       } else {
         const rejectionMessages: Record<string, string> = {
           cc_rejected_insufficient_amount: 'Saldo insuficiente no cartão.',
@@ -348,7 +366,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           onClose();
         }, 1500);
       } else if (data.status === 'in_process') {
-        setCardResult({ success: true, message: 'Pagamento em análise. Você receberá uma confirmação em breve.' });
+        toast.info('Pagamento em análise. Você receberá uma confirmação em breve.');
+        setTimeout(() => {
+          onPaymentComplete?.();
+          onClose();
+        }, 2000);
       } else {
         const msg = 'Pagamento recusado. Verifique o CVV ou use outro cartão.';
         setCardResult({ success: false, message: msg });

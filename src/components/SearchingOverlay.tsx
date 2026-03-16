@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 
@@ -6,6 +7,18 @@ interface SearchingOverlayProps {
 }
 
 const SearchingOverlay: React.FC<SearchingOverlayProps> = ({ onCancel }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatElapsed = (s: number) => {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  };
+
   return (
     <div className="fixed inset-0 bg-card/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-8">
       <div className="relative mb-8">
@@ -33,8 +46,11 @@ const SearchingOverlay: React.FC<SearchingOverlayProps> = ({ onCancel }) => {
       <h2 className="text-2xl font-bold text-foreground mb-2 text-center">
         Procurando pilotos próximos...
       </h2>
-      <p className="text-muted text-center mb-8">
+      <p className="text-muted text-center mb-2">
         Isso geralmente leva menos de 1 minuto
+      </p>
+      <p className="text-sm font-semibold text-secondary mb-6">
+        {formatElapsed(elapsed)}
       </p>
 
       <Button

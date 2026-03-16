@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserRole, RideStatus, Location, Pilot } from '@/types';
-import { locations, mockPilot } from '@/data/mockData';
+import { locations } from '@/data/mockData';
 import { PRICE_TABLE, DEFAULT_PRICE, DISTANCE_TABLE, TIME_TABLE } from '@/data/pricingData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -35,10 +35,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isPilotOnline, setIsPilotOnline] = useState(false);
   const [passengerCount, setPassengerCount] = useState(1);
 
-  // Clear ride state when user logs out to prevent stale data on next login
+  // Clear ride state when user logs out or changes to prevent stale data
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
         setRideStatus('idle');
         setOrigin(null);
         setDestination(null);

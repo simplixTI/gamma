@@ -29,6 +29,9 @@ export async function initMobilePlugins() {
 
   try {
     const { Keyboard } = await import('@capacitor/keyboard');
+    // Remove any previous listeners before adding new ones to avoid duplicates
+    // if initMobilePlugins is ever called more than once.
+    await Keyboard.removeAllListeners();
     Keyboard.addListener('keyboardWillShow', () => {
       document.body.classList.add('keyboard-open');
     });
@@ -37,5 +40,26 @@ export async function initMobilePlugins() {
     });
   } catch {
     // Ignore
+  }
+
+  try {
+    // Re-connect Supabase Realtime when the app returns to foreground.
+    // Android / iOS kill WebSocket connections when the app is backgrounded;
+    // without this handler, passengers/pilots lose live updates until they
+    // hard-reload the app.
+    const { App: CapApp } = await import('@capacitor/app');
+    CapApp.addListener('appStateChange', async ({ isActive }) => {
+      if (!isActive) return;
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        // Reconnect all channels that were open before backgrounding.
+        // supabase-js exposes this via the internal realtime client.
+        await supabase.realtime.connect();
+      } catch (err) {
+        console.warn('[Capacitor] Supabase realtime reconnect failed:', err);
+      }
+    });
+  } catch {
+    // @capacitor/app may not be installed
   }
 }

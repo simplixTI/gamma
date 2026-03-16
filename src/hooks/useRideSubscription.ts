@@ -34,8 +34,6 @@ export const useRideSubscription = ({
       const oldRide = payload.old;
       const previousStatus = oldRide?.status || previousStatusRef.current;
 
-      console.log('Ride update received:', { newRide, previousStatus });
-
       // Call the callback
       onRideUpdate?.(newRide);
 
@@ -77,8 +75,6 @@ export const useRideSubscription = ({
   const handleNewRideRequest = useCallback(
     (payload: { new: DbRide }) => {
       const ride = payload.new;
-      console.log('New ride request:', ride);
-      
       if (isPilot && ride.status === 'pending') {
         playNewRideSound();
         notifyNewRideRequest(
@@ -96,13 +92,17 @@ export const useRideSubscription = ({
       return;
     }
 
-    const channelName = rideId 
-      ? `ride-${rideId}` 
-      : isPilot 
-        ? 'pilot-rides' 
-        : `passenger-${deviceId}`;
+    // For pilots without a deviceId we cannot form a stable channel name, so bail out.
+    // PilotDashboard uses its own supabase channel directly with the pilotId.
+    if (isPilot && !deviceId) {
+      return;
+    }
 
-    console.log('Setting up ride subscription:', channelName);
+    const channelName = rideId
+      ? `ride-${rideId}`
+      : isPilot
+        ? `pilot-rides-${deviceId}`
+        : `passenger-${deviceId}`;
 
     const channel = supabase
       .channel(channelName)
@@ -119,8 +119,6 @@ export const useRideSubscription = ({
               : `passenger_device_id=eq.${deviceId}`,
         },
         (payload) => {
-          console.log('Realtime payload:', payload);
-          
           if (payload.eventType === 'INSERT' && isPilot) {
             handleNewRideRequest({ new: payload.new as DbRide });
           } else if (payload.eventType === 'UPDATE') {
@@ -132,11 +130,12 @@ export const useRideSubscription = ({
         }
       )
       .subscribe((status) => {
-        console.log('Subscription status:', status);
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[useRideSubscription] Realtime channel error:', channelName);
+        }
       });
 
     return () => {
-      console.log('Unsubscribing from ride channel');
       supabase.removeChannel(channel);
     };
   }, [rideId, deviceId, isPilot, handleRideChange, handleNewRideRequest]);

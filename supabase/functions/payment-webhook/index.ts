@@ -35,7 +35,13 @@ async function verifyMpSignature(
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  return computed === v1;
+  // Constant-time comparison to prevent timing attacks on signature verification
+  if (computed.length !== v1.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ v1.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function ok(body: Record<string, unknown> = { received: true }): Response {
@@ -58,6 +64,11 @@ Deno.serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // DEPRECATED: This endpoint is dead code. All MP webhooks are handled by mp-webhook.
+    // Do NOT register this URL in the Mercado Pago dashboard.
+    console.warn('[payment-webhook] DEPRECATED endpoint called — should not be receiving events');
+    return ok({ error: 'deprecated_endpoint', use: 'mp-webhook' });
 
     const rawBody = await req.text();
     console.log('MP payment-webhook received:', rawBody.substring(0, 200));

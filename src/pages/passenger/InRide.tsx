@@ -40,9 +40,16 @@ const InRide = () => {
       getCurrentRide(user.id).then((ride) => {
         if (ride && ride.status === 'in_progress') {
           setRideId(ride.id);
+        } else if (ride && ride.status === 'completed') {
+          // Already completed — skip InRide and go straight to summary
+          navigate('/passenger/completed', { state: { rideId: ride.id } });
         } else if (!ride) {
           toast.error('Corrida não encontrada.');
           navigate('/passenger');
+        }
+        // If status is accepted/pilot_arriving, send back to tracking
+        else if (ride.status === 'accepted' || ride.status === 'pilot_arriving') {
+          navigate('/passenger/tracking', { state: { rideId: ride.id } });
         }
       }).catch(() => {
         toast.error('Erro ao carregar corrida.');
@@ -61,7 +68,7 @@ const InRide = () => {
 
       const { data, error } = await supabase
         .from('rides')
-        .select('*')
+        .select('id, status, pilot_lat, pilot_lng, started_at, pilot_name, pilot_phone, origin_name, origin_address, origin_lat, origin_lng, destination_name, destination_address, destination_lat, destination_lng, price')
         .eq('id', rideId)
         .maybeSingle();
 
@@ -74,8 +81,8 @@ const InRide = () => {
       const ride = data as DbRide;
       setCurrentRide(ride);
 
-      // Set origin/destination from ride data (only once, using refs to avoid stale closure)
-      if (!originRef.current && ride.origin_name) {
+      // Always restore origin/destination from ride data (handles page refresh + stale context)
+      if (ride.origin_name) {
         setOriginRef.current({
           id: 'origin',
           name: ride.origin_name,
@@ -83,7 +90,7 @@ const InRide = () => {
           coordinates: [ride.origin_lng, ride.origin_lat],
         });
       }
-      if (!destinationRef.current && ride.destination_name) {
+      if (ride.destination_name) {
         setDestinationRef.current({
           id: 'destination',
           name: ride.destination_name || '',
@@ -161,18 +168,27 @@ const InRide = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Normalize to local BR number (10-11 digits), then add +55
+  const normalizePhone = (raw: string) => {
+    let digits = raw.replace(/\D/g, '');
+    // Strip country code if already present (55 + 10 or 11 digits = 12 or 13 digits)
+    if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+      digits = digits.slice(2);
+    }
+    return digits;
+  };
+
   const handleCall = () => {
     if (currentRide?.pilot_phone) {
-      window.open(`tel:${currentRide.pilot_phone}`);
+      const digits = normalizePhone(currentRide.pilot_phone);
+      if (digits.length >= 10) window.open(`tel:+55${digits}`);
     }
   };
 
   const handleWhatsApp = () => {
     if (currentRide?.pilot_phone) {
-      const digits = currentRide.pilot_phone.replace(/\D/g, '');
-      if (digits.length >= 10 && digits.length <= 15) {
-        window.open(`https://wa.me/55${digits}`);
-      }
+      const digits = normalizePhone(currentRide.pilot_phone);
+      if (digits.length >= 10) window.open(`https://wa.me/55${digits}`);
     }
   };
 

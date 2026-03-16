@@ -252,12 +252,12 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
     setMap(null);
   }, []);
 
-  const handleMarkerClick = (location: Location) => {
+  const handleMarkerClick = useCallback((location: Location) => {
     setSelectedMarker(location);
     if (onLocationSelect) {
       onLocationSelect(location);
     }
-  };
+  }, [onLocationSelect]);
 
   if (apiKey === '') {
     return (
@@ -383,8 +383,26 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           <Polyline
             path={originToDestPath}
             options={routePhase === 'preview'
-              ? { strokeColor: "#F5A623", strokeOpacity: 0, strokeWeight: 0, zIndex: 7, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#F5A623', scale: 5 }, offset: '0', repeat: '20px' }] }
-              : { strokeColor: "#22C55E", strokeOpacity: 0.85, strokeWeight: 5, zIndex: 7, icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 3, strokeColor: '#ffffff', strokeWeight: 1 }, offset: '50%' }] }
+              ? {
+                  strokeColor: '#F5A623',
+                  strokeOpacity: 0,
+                  strokeWeight: 0,
+                  zIndex: 7,
+                  icons: [
+                    {
+                      icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#F5A623', strokeWeight: 3, scale: 6 },
+                      offset: '0',
+                      repeat: '16px',
+                    },
+                  ],
+                }
+              : {
+                  strokeColor: '#22C55E',
+                  strokeOpacity: 0.85,
+                  strokeWeight: 5,
+                  zIndex: 7,
+                  icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 3, strokeColor: '#ffffff', strokeWeight: 1 }, offset: '50%' }],
+                }
             }
           />
         )}

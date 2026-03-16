@@ -40,7 +40,7 @@ const Logo: React.FC<LogoProps> = ({
     : isDark ? '/logo.dark.png' : '/logo.png';
 
   return (
-    <div className={cn('flex flex-col items-start gap-1.5', className)}>
+    <div className={cn('flex flex-col items-center gap-1.5', className)}>
       <img
         src={src}
         alt="Gamma"

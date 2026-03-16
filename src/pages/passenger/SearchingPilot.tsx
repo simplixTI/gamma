@@ -37,16 +37,18 @@ const SearchingPilot = () => {
         if (ride) {
           setCurrentRideId(ride.id);
           if (ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') {
-            // Already matched, go to tracking
+            // Already matched, go to tracking (pilot_id = pilot_profiles.id row UUID)
             let pilotRating = 4.9;
             if (ride.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
                 .select('rating')
-                .eq('user_id', ride.pilot_id)
+                .eq('id', ride.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
             }
+            if (navigatedToTrackingRef.current) return;
+            navigatedToTrackingRef.current = true;
             setCurrentPilot({
               id: ride.pilot_id || 'pilot-1',
               name: ride.pilot_name || 'Capitão',
@@ -88,13 +90,13 @@ const SearchingPilot = () => {
             playSound();
             notifyRideAccepted(updatedRide.pilot_name || 'Capitão');
 
-            // Fetch real pilot rating from DB
+            // Fetch real pilot rating from DB (pilot_id = pilot_profiles.id row UUID)
             let pilotRating = 4.9;
             if (updatedRide.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
                 .select('rating')
-                .eq('user_id', updatedRide.pilot_id)
+                .eq('id', updatedRide.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
             }
@@ -118,9 +120,14 @@ const SearchingPilot = () => {
             });
             navigate('/passenger/tracking', { state: { rideId: updatedRide.id } });
           } else if (updatedRide.status === 'cancelled') {
-            toast.error('Corrida cancelada');
-            setRideStatus('idle');
-            navigate('/passenger');
+            // Only act on cancel if we haven't already navigated to tracking
+            // (prevents cancel overriding a simultaneous accept event)
+            if (!navigatedToTrackingRef.current) {
+              navigatedToTrackingRef.current = true;
+              toast.error('Corrida cancelada');
+              setRideStatus('idle');
+              navigate('/passenger');
+            }
           }
         }
       )
@@ -133,7 +140,7 @@ const SearchingPilot = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentRideId, navigate, setCurrentPilot, setRideStatus]);
+  }, [currentRideId, navigate, setCurrentPilot, setRideStatus, playSound, notifyRideAccepted]);
 
   // Polling como fallback para casos onde o realtime não funciona
   useEffect(() => {
@@ -143,7 +150,7 @@ const SearchingPilot = () => {
       try {
         const { data: ride, error } = await supabase
           .from('rides')
-          .select('*')
+          .select('id, status, pilot_id, pilot_name, pilot_phone')
           .eq('id', currentRideId)
           .single();
 
@@ -158,7 +165,7 @@ const SearchingPilot = () => {
             const { data: pp } = await supabase
               .from('pilot_profiles')
               .select('rating')
-              .eq('user_id', ride.pilot_id)
+              .eq('id', ride.pilot_id)
               .maybeSingle();
             if (pp?.rating) pilotRating = pp.rating;
           }
@@ -173,7 +180,8 @@ const SearchingPilot = () => {
           setCurrentPilot(pilot);
           setRideStatus('matched');
           navigate('/passenger/tracking', { state: { rideId: ride.id } });
-        } else if (ride.status === 'cancelled') {
+        } else if (ride.status === 'cancelled' && !navigatedToTrackingRef.current) {
+          navigatedToTrackingRef.current = true;
           toast.error('Corrida cancelada');
           setRideStatus('idle');
           navigate('/passenger');
@@ -193,37 +201,45 @@ const SearchingPilot = () => {
   // Increment search time and auto-cancel after 5 minutes
   useEffect(() => {
     const timer = setInterval(() => {
-      setSearchTime((prev) => {
-        const newTime = prev + 1;
-        // Auto-cancel after 5 minutes (300 seconds)
-        if (newTime >= 300 && currentRideId) {
-          cancelRide(currentRideId)
-            .then(() => {
-              toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
-              setRideStatus('idle');
-              navigate('/passenger');
-            })
-            .catch(() => {
-              toast.error('Tempo esgotado. Tente novamente.');
-              setRideStatus('idle');
-              navigate('/passenger');
-            });
-        }
-        return newTime;
-      });
+      setSearchTime((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentRideId, navigate, setRideStatus]);
+  }, []);
+
+  // Trigger auto-cancel when timeout is reached
+  useEffect(() => {
+    if (searchTime >= 300 && currentRideId && !navigatedToTrackingRef.current) {
+      navigatedToTrackingRef.current = true;
+      cancelRide(currentRideId)
+        .then(() => {
+          toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
+        })
+        .catch(() => {
+          toast.error('Tempo esgotado. Tente novamente.');
+        })
+        .finally(() => {
+          setRideStatus('idle');
+          navigate('/passenger');
+        });
+    }
+  }, [searchTime, currentRideId, navigate, setRideStatus]);
 
   const handleCancel = async () => {
+    // Prevent double-cancellation if realtime/polling has already navigated away
+    if (navigatedToTrackingRef.current) return;
     if (currentRideId) {
       try {
         await cancelRide(currentRideId);
       } catch (error) {
         console.error('Error cancelling ride:', error);
         toast.error('Erro ao cancelar. Tente novamente.');
+        // Do not navigate away — the ride is still active in the DB.
+        // The user can retry cancellation or wait for a pilot.
+        return;
       }
     }
+    // Only mark as navigated and redirect after a successful cancellation
+    navigatedToTrackingRef.current = true;
     setRideStatus('idle');
     navigate('/passenger');
   };

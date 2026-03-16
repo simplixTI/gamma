@@ -26,12 +26,25 @@ const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
     return <Navigate to={authPath} state={{ from: location }} replace />;
   }
 
-  if (requiredRole && role !== null && role !== requiredRole) {
-    // User is logged in but with wrong role — send to their own dashboard
-    const correctPath = role === 'pilot' ? '/pilot' : '/passenger';
-    // Only redirect if we're not already on their correct path (prevents loop)
-    if (!location.pathname.startsWith(correctPath)) {
-      return <Navigate to={correctPath} replace />;
+  // If a specific role is required and the role has been resolved but doesn't match,
+  // redirect. We also wait for role to be non-null before allowing access, which
+  // prevents the brief window where user is set but role is still loading (null).
+  if (requiredRole) {
+    if (role === null) {
+      // Role not yet loaded — keep showing the spinner until it resolves
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      );
+    }
+    if (role !== requiredRole) {
+      // User is logged in but with wrong role — send to their own dashboard
+      const correctPath = role === 'pilot' ? '/pilot' : '/passenger';
+      // Only redirect if we're not already on their correct path (prevents loop)
+      if (!location.pathname.startsWith(correctPath)) {
+        return <Navigate to={correctPath} replace />;
+      }
     }
   }
 

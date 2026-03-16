@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Star, Ship, History, Users } from 'lucide-react';
+import { Menu, Star, Ship, History, Users, Clock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import GoogleMapView from '@/components/GoogleMapView';
 import RideRequestCard from '@/components/RideRequestCard';
@@ -9,6 +9,7 @@ import PilotDrawer from '@/components/layout/PilotDrawer';
 import ProfileIncompleteModal from '@/components/ProfileIncompleteModal';
 import { useApp } from '@/contexts/AppContext';
 import { useNotifications } from '@/hooks/useNotifications';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useNotificationSound } from '@/hooks/useNotificationSound';
 import { usePilotStats } from '@/hooks/usePilotStats';
 import { usePilotGPS } from '@/hooks/usePilotGPS';
@@ -41,6 +42,8 @@ const PilotDashboard = () => {
   const { permission, requestPermission, notifyNewRideRequest } = useNotifications();
   const { playNewRideSound } = useNotificationSound();
   const { stats, loading: statsLoading, pilotId } = usePilotStats();
+
+  usePushNotifications(user?.id);
 
   const boatCapacity: number = Math.max(1, pilotProfile?.boat_capacity ?? BOAT_CAPACITY);
   const availableSeats = boatCapacity - currentPassengers;
@@ -82,7 +85,7 @@ const PilotDashboard = () => {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('rides')
-      .select('*')
+      .select('id, status, passenger_device_id, passenger_name, passenger_count, pilot_id, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, created_at')
       .eq('status', 'pending')
       .gte('created_at', cutoff)
       .order('created_at', { ascending: false });
@@ -104,7 +107,7 @@ const PilotDashboard = () => {
     if (!pilotId) return;
     const { data } = await supabase
       .from('rides')
-      .select('*')
+      .select('id, status, passenger_name, passenger_count, origin_name, destination_name, accepted_at')
       .eq('pilot_id', pilotId)
       .in('status', ['accepted', 'pilot_arriving', 'in_progress'])
       .order('accepted_at', { ascending: true });
@@ -131,7 +134,7 @@ const PilotDashboard = () => {
     fetchPendingRides();
 
     const channel = supabase
-      .channel('pilot-rides')
+      .channel(`pilot-rides-${pilotId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
@@ -168,19 +171,22 @@ const PilotDashboard = () => {
     }
   }, [isPilotOnline, permission, requestPermission]);
 
-  // Go offline when component unmounts (tab closed / navigation away)
+  // Go offline when component unmounts only if no active rides
+  // (prevents going offline while navigating to an active ride)
   useEffect(() => {
     return () => {
-      setIsPilotOnline(false);
+      if (activeRides.length === 0) {
+        setIsPilotOnline(false);
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeRides.length]);
 
-  const drawerStats = {
+  const drawerStats = useMemo(() => ({
     ridestoday: stats.ridesToday,
     earnings: stats.earnings,
     rating: stats.rating,
-  };
+  }), [stats.ridesToday, stats.earnings, stats.rating]);
 
   const handleAcceptRide = async (rideId: string) => {
     if (acceptingRideId || !pilotId) {
@@ -311,6 +317,32 @@ const PilotDashboard = () => {
           )}
         </div>
       </header>
+
+      {/* Approval status banner */}
+      {pilotProfile && (pilotProfile as any).approval_status !== 'approved' && (
+        <div
+          className={`px-4 py-3 flex items-center gap-3 cursor-pointer
+            ${ (pilotProfile as any).approval_status === 'under_review'
+                ? 'bg-blue-500/10 border-b border-blue-500/20'
+                : 'bg-orange-500/10 border-b border-orange-500/20'}`}
+          onClick={() => navigate('/pilot/documents')}
+        >
+          { (pilotProfile as any).approval_status === 'under_review'
+            ? <Clock className="w-5 h-5 text-blue-500 shrink-0" />
+            : <FileText className="w-5 h-5 text-orange-500 shrink-0" />
+          }
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${ (pilotProfile as any).approval_status === 'under_review' ? 'text-blue-600' : 'text-orange-600'}`}>
+              { (pilotProfile as any).approval_status === 'under_review'
+                  ? 'Documentos em análise (até 24h)'
+                  : (pilotProfile as any).approval_status === 'rejected'
+                    ? 'Cadastro reprovado — verifique os documentos'
+                    : 'Complete seu cadastro enviando os documentos'}
+            </p>
+            <p className="text-xs text-muted-foreground">Toque para ver detalhes</p>
+          </div>
+        </div>
+      )}
 
       {/* Map */}
       <div className="h-48 relative">

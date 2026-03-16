@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Navigation, MapPin, Users, Tag, QrCode, CreditCard } from 'lucide-react';
+import { ArrowLeft, Clock, Navigation, MapPin, Users, Tag, QrCode, CreditCard, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import GoogleMapView from '@/components/GoogleMapView';
 import { locations } from '@/data/mockData';
 import { useApp } from '@/contexts/AppContext';
@@ -24,6 +25,7 @@ const RequestRide = () => {
     calculatePrice,
     calculateDistance,
     calculateTime,
+    setRideStatus,
   } = useApp();
   const { user, passengerProfile } = useAuthContext();
   const { hasDiscount, activeDiscount, useDiscount } = useReferral(user?.id);
@@ -37,6 +39,34 @@ const RequestRide = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
+  const [pierSearch, setPierSearch] = useState('');
+  const [nearestPierId, setNearestPierId] = useState<string | null>(null);
+
+  // Detect nearest pier via GPS on mount (for origin suggestion)
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const userLat = pos.coords.latitude;
+        const userLng = pos.coords.longitude;
+        let minDist = Infinity;
+        let nearest: string | null = null;
+        for (const loc of locations) {
+          const lat = loc.coordinates[1]; // [lng, lat] format
+          const lng = loc.coordinates[0];
+          const dLat = (lat - userLat) * Math.PI / 180;
+          const dLng = (lng - userLng) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(userLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          const dist = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); // meters
+          if (dist < minDist) { minDist = dist; nearest = loc.id; }
+        }
+        setNearestPierId(nearest);
+      },
+      () => { /* GPS denied — no suggestion */ },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+    );
+  }, []);
 
   // Piers de Zona A (PASSARELA, JACARÉ, INVASÃO) — preço promocional R$10 (era R$13)
   const ZONE_A_PIERS = new Set(['7', '18', '19']);
@@ -61,7 +91,7 @@ const RequestRide = () => {
     }
     setPaymentMethod(method);
 
-    // Validate passenger profile
+    // Validate passenger profile BEFORE creating ride to avoid orphaned DB records
     const validation = validatePassengerProfile(passengerProfile);
     if (!validation.isValid) {
       setMissingFields(validation.missingFields);
@@ -103,7 +133,7 @@ const RequestRide = () => {
       }, { maxAttempts: 3 });
 
       if (opError) {
-        toast.error(opError);
+        toast.error(String(opError));
         return;
       }
 
@@ -133,7 +163,7 @@ const RequestRide = () => {
       });
 
       if (error) {
-        toast.error(error);
+        toast.error(String(error));
         return;
       }
 
@@ -164,6 +194,7 @@ const RequestRide = () => {
     }
     setShowPaymentModal(false);
     setCurrentRideId(null);
+    setRideStatus('idle');
   };
 
   return (
@@ -201,6 +232,7 @@ const RequestRide = () => {
               onClick={() => {
                 setShowOriginPicker(true);
                 setShowDestinationPicker(false);
+                setPierSearch('');
               }}
               className="flex-1 text-left min-w-0 py-1"
             >
@@ -226,6 +258,7 @@ const RequestRide = () => {
               onClick={() => {
                 setShowDestinationPicker(true);
                 setShowOriginPicker(false);
+                setPierSearch('');
               }}
               className="flex-1 text-left min-w-0 py-1"
             >
@@ -242,35 +275,71 @@ const RequestRide = () => {
 
         {/* Location picker dropdown */}
         {(showOriginPicker || showDestinationPicker) && (
-          <div className="mt-2 bg-card rounded-xl shadow-lg max-h-64 overflow-y-auto animate-scale-in">
-            <div className="p-2">
-              {locations
-                .filter((loc) => showOriginPicker ? loc.id !== destination?.id : loc.id !== origin?.id)
-                .map((location) => (
-                  <button
-                    key={location.id}
-                    onClick={() => {
-                      if (showOriginPicker) {
-                        setOrigin(location);
-                        setShowOriginPicker(false);
-                        if (!destination) setShowDestinationPicker(true);
-                      } else {
-                        setDestination(location);
-                        setShowDestinationPicker(false);
-                      }
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/5 active:bg-muted/10 transition-colors"
-                  >
-                    <div className="w-10 h-10 bg-muted/10 rounded-full flex items-center justify-center">
-                      <MapPin className="w-5 h-5 text-muted" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-medium text-foreground text-sm">{location.name}</p>
-                      <p className="text-xs text-muted">{location.address}</p>
-                    </div>
-                    <span className="text-xs text-muted">{location.estimatedTime}</span>
-                  </button>
-                ))}
+          <div className="mt-2 bg-card rounded-xl shadow-lg animate-scale-in">
+            <div className="p-2 pb-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={pierSearch}
+                  onChange={(e) => setPierSearch(e.target.value)}
+                  placeholder="Buscar local..."
+                  className="pl-9 h-9 text-sm"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="p-2 pt-1 max-h-52 overflow-y-auto">
+              {(() => {
+                const filtered = locations
+                  .filter((loc) => showOriginPicker ? loc.id !== destination?.id : loc.id !== origin?.id)
+                  .filter((loc) => loc.name.toLowerCase().includes(pierSearch.toLowerCase()));
+
+                // When picking origin and no search active, sort nearest pier first
+                const sorted = showOriginPicker && !pierSearch && nearestPierId
+                  ? [...filtered].sort((a, b) => (a.id === nearestPierId ? -1 : b.id === nearestPierId ? 1 : 0))
+                  : filtered;
+
+                if (sorted.length === 0) {
+                  return <p className="text-sm text-muted-foreground text-center py-4">Nenhum local encontrado</p>;
+                }
+
+                return sorted.map((location) => {
+                  const isNearest = showOriginPicker && !pierSearch && location.id === nearestPierId;
+                  return (
+                    <button
+                      key={location.id}
+                      onClick={() => {
+                        if (showOriginPicker) {
+                          setOrigin(location);
+                          setShowOriginPicker(false);
+                          if (!destination) setShowDestinationPicker(true);
+                        } else {
+                          setDestination(location);
+                          setShowDestinationPicker(false);
+                        }
+                        setPierSearch('');
+                      }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg active:bg-muted/10 transition-colors ${isNearest ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/5'}`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isNearest ? 'bg-primary/15' : 'bg-muted/10'}`}>
+                        <MapPin className={`w-5 h-5 ${isNearest ? 'text-primary' : 'text-muted'}`} />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-foreground text-sm">{location.name}</p>
+                          {isNearest && (
+                            <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
+                              Mais próximo
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted">{location.address}</p>
+                      </div>
+                      <span className="text-xs text-muted">{location.estimatedTime}</span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
@@ -296,7 +365,7 @@ const RequestRide = () => {
                 <div className="flex items-center gap-2.5">
                   <button
                     onClick={() => setPassengerCount(Math.max(1, passengerCount - 1))}
-                    className="w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
+                    className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
                     disabled={passengerCount <= 1}
                   >
                     −
@@ -304,7 +373,7 @@ const RequestRide = () => {
                   <span className="w-4 text-center font-bold text-sm">{passengerCount}</span>
                   <button
                     onClick={() => setPassengerCount(Math.min(16, passengerCount + 1))}
-                    className="w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
+                    className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
                     disabled={passengerCount >= 16}
                   >
                     +

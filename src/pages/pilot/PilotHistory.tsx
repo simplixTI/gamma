@@ -29,20 +29,24 @@ const PilotHistory = () => {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('pilot_id', pilotProfile.id)
-        .in('status', ['completed', 'cancelled'])
-        .order('created_at', { ascending: false })
-        .limit(100);
+      try {
+        const { data, error } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('pilot_id', pilotProfile.id)
+          .in('status', ['completed', 'cancelled'])
+          .order('created_at', { ascending: false })
+          .limit(100);
 
-      if (error) {
-        console.error('Error fetching rides:', error);
-      } else {
-        setRides(data as DbRide[]);
+        if (error) {
+          console.error('Error fetching rides:', error);
+          toast.error('Erro ao carregar histórico. Verifique sua conexão.');
+        } else {
+          setRides(data as DbRide[]);
+        }
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     fetchRides();

@@ -59,8 +59,13 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
+    // DEPRECATED: This endpoint is dead code. Wallet webhook events are handled by mp-webhook.
+    // wallet-topup sets notification_url to /functions/v1/mp-webhook, not this endpoint.
+    console.warn('[mp-wallet-webhook] DEPRECATED endpoint called — should not be receiving events');
+    return ok({ error: 'deprecated_endpoint', use: 'mp-webhook' });
+
     const rawBody = await req.text();
-    console.log('MP mp-wallet-webhook received:', rawBody.substring(0, 200));
+    console.log('MP mp-wallet-webhook received');
 
     if (MP_WEBHOOK_SECRET) {
       const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
@@ -89,16 +94,12 @@ Deno.serve(async (req) => {
     });
 
     if (!mpRes.ok) {
-      console.error('Failed to fetch MP payment:', mpPaymentId, mpRes.status);
+      console.error('Failed to fetch MP payment:', mpRes.status);
       return ok({ error: 'mp_fetch_failed' });
     }
 
     const mpPayment = await mpRes.json();
-    console.log('MP wallet payment status:', {
-      id: mpPaymentId,
-      status: mpPayment.status,
-      ref: mpPayment.external_reference,
-    });
+    console.log('MP wallet payment status:', mpPayment.status);
 
     if (mpPayment.status !== 'approved') {
       return ok({ status: mpPayment.status });
@@ -132,7 +133,7 @@ Deno.serve(async (req) => {
     }
 
     if (!tx) {
-      console.error('Wallet transaction not found for MP payment:', mpPaymentId);
+      console.error('Wallet transaction not found for MP payment');
       return ok({ error: 'transaction_not_found' });
     }
 
@@ -145,7 +146,7 @@ Deno.serve(async (req) => {
       .select('id', { count: 'exact', head: true });
 
     if (!count || count === 0) {
-      console.log('Wallet transaction already processed (duplicate webhook), skipping:', tx.id);
+      console.log('Wallet transaction already processed (duplicate webhook), skipping');
       return ok({ success: true, duplicate: true });
     }
 
@@ -167,7 +168,7 @@ Deno.serve(async (req) => {
       return ok({ error: 'credit_failed' });
     }
 
-    console.log(`Wallet credited: user ${tx.user_id}, amount ${tx.amount}`);
+    console.log('Wallet credited successfully');
     return ok({ success: true });
 
   } catch (error: unknown) {

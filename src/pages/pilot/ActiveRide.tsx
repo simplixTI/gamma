@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Phone, Navigation, Clock, Route, Loader2, MessageCircle, CheckCircle2, AlertCircle, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import GoogleMapView from '@/components/GoogleMapView';
 import RideChat from '@/components/RideChat';
 import RideTimeline, { TimelineStep } from '@/components/RideTimeline';
 import { supabase } from '@/integrations/supabase/client';
-import { DbRide, Ride, Location } from '@/types';
+import { DbRide, Ride } from '@/types';
 import { toast } from 'sonner';
 import { usePilotGPS } from '@/hooks/usePilotGPS';
 import { useNotificationSound } from '@/hooks/useNotificationSound';
@@ -34,13 +34,21 @@ const ActiveRide = () => {
   const navigate = useNavigate();
   const { rideId } = useParams();
   const [phase, setPhase] = useState<RidePhase>('going_to_passenger');
+  // timerStart is seeded from DB started_at so elapsed time is correct after remount
+  const [timerStart, setTimerStart] = useState<Date | null>(null);
   const [timer, setTimer] = useState(0);
+  // Prevent duplicate navigation when realtime and local action race
+  const navigatedAwayRef = useRef(false);
   const [ride, setRide] = useState<Ride | null>(null);
   const [passengerCount, setPassengerCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isActionPending, setIsActionPending] = useState(false);
+  // pilotProfileId = pilot_profiles.id (UUID), used for the cancel_ride_by_pilot RPC
+  const [pilotProfileId, setPilotProfileId] = useState<string | undefined>(undefined);
+  // pilotUserId = auth UUID, used for GPS tracking via usePilotGPS
   const [currentPilotId, setCurrentPilotId] = useState<string | undefined>(undefined);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
   const [passengerPhone, setPassengerPhone] = useState<string | null>(null);
@@ -53,9 +61,10 @@ const ActiveRide = () => {
     }
   }, [isChatOpen, playSound]);
 
-  // GPS tracking - active when ride is in progress or going to passenger
+  // GPS tracking - active when ride is in progress or going to passenger.
+  // currentPilotId is the pilot_profiles.id UUID (set from pilot_user_id on the ride row).
   const isGPSActive = phase === 'going_to_passenger' || phase === 'waiting' || phase === 'in_progress';
-  usePilotGPS({ rideId, pilotId: currentPilotId, isActive: isGPSActive, intervalMs: 5000 });
+  usePilotGPS({ rideId, pilotId: currentPilotId, isActive: isGPSActive });
 
   // Convert database ride to app ride format
   // IMPORTANT: DB stores lat/lng correctly, but Location.coordinates format is [lng, lat]
@@ -94,7 +103,7 @@ const ActiveRide = () => {
 
       const { data, error } = await supabase
         .from('rides')
-        .select('*')
+        .select('id, status, passenger_device_id, passenger_name, passenger_phone, passenger_count, pilot_id, pilot_user_id, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, created_at, payment_status')
         .eq('id', rideId)
         .single();
 
@@ -110,7 +119,10 @@ const ActiveRide = () => {
         setRide(dbRideToRide(dbRide));
         setPassengerCount(dbRide.passenger_count ?? 1);
         setPassengerPhone(dbRide.passenger_phone ?? null);
-        if (data.pilot_id) setCurrentPilotId(data.pilot_id);
+        // pilot_user_id (auth UUID) → used by usePilotGPS for location updates
+        if (data.pilot_user_id) setCurrentPilotId(data.pilot_user_id);
+        // pilot_id (pilot_profiles row UUID) → used by cancel_ride_by_pilot RPC
+        if (data.pilot_id) setPilotProfileId(data.pilot_id);
         // Set phase based on ride status
         if (data.status === 'accepted') {
           setPhase('going_to_passenger');
@@ -118,6 +130,11 @@ const ActiveRide = () => {
           setPhase('waiting');
         } else if (data.status === 'in_progress') {
           setPhase('in_progress');
+          // Seed timer from DB so elapsed time is correct on remount
+          const startedAt = (data as DbRide & { started_at?: string }).started_at;
+          if (startedAt) {
+            setTimerStart((prev) => prev ?? new Date(startedAt));
+          }
         } else if (data.status === 'completed') {
           setPhase('completed');
         }
@@ -131,41 +148,42 @@ const ActiveRide = () => {
 
     fetchRide();
 
-    // Subscribe to payment updates
-    const paymentChannel = supabase
-      .channel(`payment-${rideId}`)
+    // Single channel handles both ride status updates and payment status updates.
+    // Previously two channels subscribed to the same filter; merged into one to
+    // avoid duplicate events and unnecessary connections.
+    const channel = supabase
+      .channel(`active-ride-${rideId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideId}` },
         (payload) => {
-          const updated = payload.new as DbRide;
-          if (updated.payment_status === 'paid') {
+          const updatedRide = payload.new as DbRide & { started_at?: string };
+          setRide(dbRideToRide(updatedRide));
+
+          // Payment update
+          if (updatedRide.payment_status === 'paid') {
             setPaymentStatus('paid');
             playSound();
             toast.success('Pagamento confirmado!');
           }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.warn('[ActiveRide] Realtime channel error');
-        }
-      });
 
-    // Subscribe to ride updates
-    const channel = supabase
-      .channel(`ride-${rideId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'rides',
-          filter: `id=eq.${rideId}`,
-        },
-        (payload) => {
-          const updatedRide = payload.new as DbRide;
-          setRide(dbRideToRide(updatedRide));
+          // Phase sync — keep UI in step with DB status (e.g. passenger cancels)
+          if (updatedRide.status === 'accepted') {
+            setPhase('going_to_passenger');
+          } else if (updatedRide.status === 'pilot_arriving') {
+            setPhase('waiting');
+          } else if (updatedRide.status === 'in_progress') {
+            setPhase('in_progress');
+            if (updatedRide.started_at) {
+              setTimerStart((prev) => prev ?? new Date(updatedRide.started_at!));
+            }
+          } else if (updatedRide.status === 'cancelled') {
+            if (!navigatedAwayRef.current) {
+              navigatedAwayRef.current = true;
+              toast.error('Corrida cancelada pelo passageiro');
+              navigate('/pilot');
+            }
+          }
         }
       )
       .subscribe((status) => {
@@ -176,18 +194,18 @@ const ActiveRide = () => {
 
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(paymentChannel);
     };
-  }, [rideId, navigate, dbRideToRide]);
+  }, [rideId, navigate, dbRideToRide, playSound]);
 
   useEffect(() => {
-    if (phase === 'in_progress') {
-      const interval = setInterval(() => {
-        setTimer((prev) => prev + 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [phase]);
+    if (phase !== 'in_progress' || !timerStart) return;
+    // Compute initial elapsed immediately, then update each second
+    setTimer(Math.floor((Date.now() - timerStart.getTime()) / 1000));
+    const interval = setInterval(() => {
+      setTimer(Math.floor((Date.now() - timerStart.getTime()) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase, timerStart]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -196,7 +214,7 @@ const ActiveRide = () => {
   };
 
   const handleAction = async () => {
-    if (!ride || !rideId) return;
+    if (!ride || !rideId || isActionPending) return;
 
     let newStatus = '';
     let newPhase: RidePhase = phase;
@@ -220,68 +238,82 @@ const ActiveRide = () => {
         break;
     }
 
-    const updateData: Record<string, unknown> = { status: newStatus };
-    if (newStatus === 'in_progress') {
-      updateData.started_at = new Date().toISOString();
-    }
-    if (newStatus === 'completed') {
-      updateData.completed_at = new Date().toISOString();
-    }
+    setIsActionPending(true);
+    try {
+      const updateData: Record<string, unknown> = { status: newStatus };
+      if (newStatus === 'in_progress') {
+        const now = new Date();
+        updateData.started_at = now.toISOString();
+        setTimerStart(now);
+      }
+      if (newStatus === 'completed') {
+        updateData.completed_at = new Date().toISOString();
+      }
 
-    const { error } = await supabase
-      .from('rides')
-      .update(updateData)
-      .eq('id', rideId);
+      const { error } = await supabase
+        .from('rides')
+        .update(updateData)
+        .eq('id', rideId);
 
-    if (error) {
-      console.error('Error updating ride:', error);
-      toast.error('Erro ao atualizar corrida');
-      return;
-    }
+      if (error) {
+        console.error('Error updating ride:', error);
+        toast.error('Erro ao atualizar corrida');
+        return;
+      }
 
-    setPhase(newPhase);
+      setPhase(newPhase);
 
-    if (newPhase === 'completed') {
-      navigate(`/pilot/rate/${rideId}`);
+      if (newPhase === 'completed') {
+        navigatedAwayRef.current = true;
+        navigate(`/pilot/rate/${rideId}`);
+      }
+    } finally {
+      setIsActionPending(false);
     }
   };
 
   const handleCancelRide = async () => {
-    if (!ride || !rideId) return;
-    
-    setIsCancelling(true);
-    
-    // Check if cancellation is after 3 minutes (applies fee)
-    const rideCreatedAt = new Date(ride.createdAt);
-    const now = new Date();
-    const minutesSinceCreation = (now.getTime() - rideCreatedAt.getTime()) / (1000 * 60);
-    const hasCancellationFee = minutesSinceCreation > 3;
-    const cancellationFee = hasCancellationFee ? 3.50 : 0;
-    
-    const { error } = await supabase
-      .from('rides')
-      .update({
-        status: 'cancelled',
-        cancelled_by: 'pilot',
-        cancellation_fee: cancellationFee,
-      })
-      .eq('id', rideId);
-
-    if (error) {
-      console.error('Error cancelling ride:', error);
-      toast.error('Erro ao cancelar corrida');
-      setIsCancelling(false);
+    // pilotProfileId (pilot_profiles.id) is required by cancel_ride_by_pilot RPC
+    if (!ride || !rideId || !pilotProfileId) {
+      toast.error('Dados do piloto ainda carregando. Tente novamente.');
       return;
     }
 
-    toast.success(hasCancellationFee 
-      ? `Corrida cancelada. Taxa de R$ ${cancellationFee.toFixed(2)} aplicada.`
-      : 'Corrida cancelada com sucesso');
-    navigate('/pilot');
+    setIsCancelling(true);
+
+    try {
+      // cancel_ride_by_pilot (migration 20260316000008) takes p_pilot_id = pilot_profiles.id
+      const { data, error } = await supabase.rpc('cancel_ride_by_pilot', {
+        p_ride_id: rideId,
+        p_pilot_id: pilotProfileId,
+      });
+
+      if (error) {
+        console.error('Error cancelling ride:', error);
+        toast.error('Erro ao cancelar corrida');
+        return;
+      }
+
+      // RPC returns json: { success, cancellation_fee } or { success: false, error }
+      const result = data as { success: boolean; cancellation_fee?: number; error?: string } | null;
+      if (!result?.success) {
+        toast.error(result?.error ?? 'Não foi possível cancelar a corrida');
+        return;
+      }
+
+      const fee: number = result.cancellation_fee ?? 0;
+      toast.success(fee > 0
+        ? `Corrida cancelada. Taxa de R$ ${fee.toFixed(2)} aplicada.`
+        : 'Corrida cancelada com sucesso');
+      navigatedAwayRef.current = true;
+      navigate('/pilot');
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const handleOpenNavigation = () => {
-    if (!ride) return;
+    if (!ride || !rideId) return;
     
     const dest = phase === 'in_progress' ? ride.destination : ride.origin;
     // coordinates is [lng, lat] but Google Maps needs lat,lng
@@ -340,7 +372,7 @@ const ActiveRide = () => {
   const phaseInfo = getPhaseInfo();
 
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="h-screen h-[100dvh] bg-background relative overflow-hidden">
       {/* Map */}
       <div className="absolute inset-0">
         <GoogleMapView 
@@ -377,8 +409,8 @@ const ActiveRide = () => {
           >
             <MessageCircle className="w-5 h-5" />
             {unreadMessages > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-                {unreadMessages}
+              <span className="absolute -top-1 -right-1 w-auto min-w-[20px] px-1 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
+                {unreadMessages > 9 ? '9+' : unreadMessages}
               </span>
             )}
           </Button>
@@ -416,7 +448,7 @@ const ActiveRide = () => {
             variant="secondary"
             size="icon"
             className="rounded-full"
-            onClick={() => { if (passengerPhone) window.open(`tel:${passengerPhone}`); }}
+            onClick={() => { const d = passengerPhone?.replace(/\D/g, ''); if (d && d.length >= 10) window.open(`tel:+55${d}`); }}
             disabled={!passengerPhone}
             title={passengerPhone ? `Ligar para ${ride.passengerName}` : 'Telefone não disponível'}
           >
@@ -488,8 +520,9 @@ const ActiveRide = () => {
           size="xl"
           fullWidth
           onClick={handleAction}
+          disabled={isActionPending || phase === 'completed'}
         >
-          {getActionText()}
+          {isActionPending ? <Loader2 className="w-5 h-5 animate-spin" /> : getActionText()}
         </Button>
 
         {phase === 'going_to_passenger' && (
@@ -508,16 +541,7 @@ const ActiveRide = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Cancelar corrida?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {(() => {
-                    const rideCreatedAt = ride ? new Date(ride.createdAt) : new Date();
-                    const now = new Date();
-                    const minutesSinceCreation = (now.getTime() - rideCreatedAt.getTime()) / (1000 * 60);
-                    const hasFee = minutesSinceCreation > 3;
-                    
-                    return hasFee 
-                      ? 'Cancelamentos após 3 minutos incorrem em uma taxa de R$ 3,50. Deseja continuar?'
-                      : 'Tem certeza que deseja cancelar esta corrida?';
-                  })()}
+                  Cancelamentos após 3 minutos incorrem em uma taxa de R$ 3,50. Deseja continuar?
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

@@ -72,10 +72,11 @@ const PassengerDrawer = ({ open, onOpenChange }: PassengerDrawerProps) => {
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                   {passengerProfile?.photo_url ? (
-                    <img 
-                      src={passengerProfile.photo_url} 
-                      alt="Profile" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={passengerProfile.photo_url}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <User className="w-7 h-7 text-primary" />

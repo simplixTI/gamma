@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, TrendingUp, Calendar, DollarSign, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { startOfDay, startOfWeek, startOfMonth, format } from 'date-fns';
+import { startOfDay, startOfWeek, startOfMonth, subDays, subWeeks, subMonths, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 import SimplixFooter from '@/components/SimplixFooter';
 
 type Period = 'day' | 'week' | 'month';
@@ -33,95 +34,93 @@ const Earnings = () => {
   const [previous, setPrevious] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    loadEarnings();
-  }, [user?.id, period]);
-
   const getPeriodStart = (p: Period, offset = 0): Date => {
     const now = new Date();
-    if (p === 'day') {
-      const d = startOfDay(now);
-      d.setDate(d.getDate() - offset);
-      return d;
-    }
-    if (p === 'week') {
-      const d = startOfWeek(now, { weekStartsOn: 1 });
-      d.setDate(d.getDate() - offset * 7);
-      return d;
-    }
-    const d = startOfMonth(now);
-    d.setMonth(d.getMonth() - offset);
-    return d;
+    if (p === 'day')  return subDays(startOfDay(now), offset);
+    if (p === 'week') return subWeeks(startOfWeek(now, { weekStartsOn: 1 }), offset);
+    return subMonths(startOfMonth(now), offset);
   };
 
-  const loadEarnings = async () => {
+  const loadEarnings = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
 
-    const currentStart = getPeriodStart(period, 0);
-    const previousStart = getPeriodStart(period, 1);
+    try {
+      const currentStart = getPeriodStart(period, 0);
+      const previousStart = getPeriodStart(period, 1);
 
-    // Fetch completed rides for this pilot in current period
-    const { data: currentRides } = await supabase
-      .from('rides')
-      .select('id, price, tip, origin_name, destination_name, completed_at')
-      .eq('pilot_user_id', user.id)
-      .eq('status', 'completed')
-      .gte('completed_at', currentStart.toISOString())
-      .order('completed_at', { ascending: false });
+      // Fetch confirmed paid completed rides for this pilot in current period
+      const { data: currentRides } = await supabase
+        .from('rides')
+        .select('id, price, tip, origin_name, destination_name, completed_at')
+        .eq('pilot_user_id', user.id)
+        .eq('status', 'completed')
+        .eq('payment_status', 'paid')
+        .gte('completed_at', currentStart.toISOString())
+        .order('completed_at', { ascending: false });
 
-    // Fetch completed rides for previous period (for growth comparison)
-    const { data: previousRides } = await supabase
-      .from('rides')
-      .select('price, tip')
-      .eq('pilot_user_id', user.id)
-      .eq('status', 'completed')
-      .gte('completed_at', previousStart.toISOString())
-      .lt('completed_at', currentStart.toISOString());
+      // Fetch previous period for growth comparison
+      const { data: previousRides } = await supabase
+        .from('rides')
+        .select('price, tip')
+        .eq('pilot_user_id', user.id)
+        .eq('status', 'completed')
+        .eq('payment_status', 'paid')
+        .gte('completed_at', previousStart.toISOString())
+        .lt('completed_at', currentStart.toISOString());
 
-    const rides = currentRides || [];
-    const totalRides = rides.reduce((sum, r) => sum + Number(r.price), 0);
-    const totalTips = rides.reduce((sum, r) => sum + Number(r.tip || 0), 0);
+      const rides = currentRides || [];
+      const totalRides = rides.reduce((sum, r) => sum + Number(r.price), 0);
+      const totalTips = rides.reduce((sum, r) => sum + Number(r.tip || 0), 0);
 
-    setCurrent({
-      total: totalRides + totalTips,
-      rides: rides.length,
-      tips: totalTips,
-    });
-
-    const prevTotal = (previousRides || []).reduce(
-      (sum, r) => sum + Number(r.price) + Number(r.tip || 0),
-      0
-    );
-    setPrevious(prevTotal);
-
-    // Build transaction list
-    const txs: Transaction[] = [];
-    for (const r of rides) {
-      const time = r.completed_at
-        ? format(new Date(r.completed_at), 'HH:mm', { locale: ptBR })
-        : '--:--';
-      txs.push({
-        id: `ride-${r.id}`,
-        type: 'ride',
-        description: `${r.origin_name || 'Origem'} → ${r.destination_name || 'Destino'}`,
-        amount: Number(r.price),
-        time,
+      setCurrent({
+        total: totalRides + totalTips,
+        rides: rides.length,
+        tips: totalTips,
       });
-      if (r.tip && Number(r.tip) > 0) {
+
+      const prevTotal = (previousRides || []).reduce(
+        (sum, r) => sum + Number(r.price) + Number(r.tip || 0),
+        0
+      );
+      setPrevious(prevTotal);
+
+      // Build transaction list
+      const txs: Transaction[] = [];
+      for (const r of rides) {
+        const time = r.completed_at
+          ? format(new Date(r.completed_at), 'dd/MM HH:mm', { locale: ptBR })
+          : '--:--';
         txs.push({
-          id: `tip-${r.id}`,
-          type: 'tip',
-          description: 'Gorjeta recebida',
-          amount: Number(r.tip),
+          id: `ride-${r.id}`,
+          type: 'ride',
+          description: `${r.origin_name || 'Origem'} → ${r.destination_name || 'Destino'}`,
+          amount: Number(r.price),
           time,
         });
+        if (r.tip && Number(r.tip) > 0) {
+          txs.push({
+            id: `tip-${r.id}`,
+            type: 'tip',
+            description: 'Gorjeta recebida',
+            amount: Number(r.tip),
+            time,
+          });
+        }
       }
+      setTransactions(txs);
+    } catch (err) {
+      console.error('loadEarnings error:', err);
+      toast.error('Erro ao carregar ganhos');
+    } finally {
+      setLoading(false);
     }
-    setTransactions(txs);
-    setLoading(false);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, period]);
+
+  useEffect(() => {
+    loadEarnings();
+  }, [loadEarnings]);
 
   const growth = previous > 0 ? ((current.total - previous) / previous) * 100 : 0;
   const isPositive = growth >= 0;

@@ -31,7 +31,7 @@ const signInSchema = z.object({
 
 const PilotAuth = () => {
   const navigate = useNavigate();
-  const { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithPhone, verifyOtp, loading, user, role } = useAuthContext();
+  const { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithPhone, verifyOtp, uploadPhoto, loading, user, role } = useAuthContext();
 
   // Redirect if already logged in
   useEffect(() => {
@@ -123,14 +123,31 @@ const PilotAuth = () => {
       }
 
       setIsSubmitting(true);
-      
-      await signUpWithEmail(email, password, 'pilot', {
+
+      const data = await signUpWithEmail(email, password, 'pilot', {
         fullName,
         phone: phone.replace(/\D/g, ''),
         cpf: cpf.replace(/\D/g, ''),
         boatType,
         boatIdentification,
       });
+
+      // Upload boat photos after account creation
+      if (boatPhotos.length > 0 && data?.user?.id) {
+        const uploadedUrls: string[] = [];
+        for (const photo of boatPhotos) {
+          try {
+            const photoUrl = await uploadPhoto(photo, 'boat-photos');
+            uploadedUrls.push(photoUrl);
+          } catch (photoErr) {
+            console.warn('Boat photo upload failed:', photoErr);
+          }
+        }
+        if (uploadedUrls.length > 0) {
+          const { supabase: sb } = await import('@/integrations/supabase/client');
+          await sb.from('pilot_profiles').update({ boat_photos: uploadedUrls }).eq('user_id', data.user.id);
+        }
+      }
 
       toast.success('Conta criada! Verifique seu email para confirmar.');
       setMode('login');
@@ -238,7 +255,7 @@ const PilotAuth = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !isSubmitting) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />

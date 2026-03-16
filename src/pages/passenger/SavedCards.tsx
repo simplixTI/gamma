@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CreditCard, Trash2, Plus, Star, Loader2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -17,6 +28,9 @@ export interface SavedCard {
   expiry_year: string;
   is_default: boolean;
   created_at: string;
+  // Mercado Pago Customers API identifiers — present when card was saved via MP
+  mp_customer_id?: string | null;
+  mp_card_id?: string | null;
 }
 
 const brandColors: Record<string, string> = {
@@ -66,12 +80,28 @@ const SavedCards = () => {
   }, [loadCards]);
 
   const handleDelete = async (cardId: string) => {
+    if (!user?.id) return;
     setDeletingId(cardId);
+
+    const card = cards.find((c) => c.id === cardId);
+
+    // If the card has an MP Customers token, remove it from MP first
+    if (card?.mp_customer_id && card?.mp_card_id) {
+      try {
+        await supabase.functions.invoke('mp-delete-card', {
+          body: { customerId: card.mp_customer_id, cardId: card.mp_card_id },
+        });
+      } catch (mpErr) {
+        // Non-blocking: log and continue — local record will still be removed
+        console.error('[SavedCards] MP card deletion failed:', mpErr);
+      }
+    }
+
     const { error } = await supabase
       .from('saved_cards')
       .delete()
       .eq('id', cardId)
-      .eq('user_id', user!.id);
+      .eq('user_id', user.id);
 
     if (error) {
       toast.error('Erro ao remover cartão');
@@ -86,26 +116,26 @@ const SavedCards = () => {
     if (!user?.id) return;
     setSettingDefaultId(cardId);
 
-    // Unset all defaults first, then set the selected one
-    await supabase
-      .from('saved_cards')
-      .update({ is_default: false })
-      .eq('user_id', user.id);
-
-    const { error } = await supabase
-      .from('saved_cards')
-      .update({ is_default: true })
-      .eq('id', cardId)
-      .eq('user_id', user.id);
+    // Use RPC for atomic single-statement update to avoid race between two writes
+    const { error } = await supabase.rpc('set_default_card', {
+      p_user_id: user.id,
+      p_card_id: cardId,
+    });
 
     if (error) {
-      toast.error('Erro ao definir cartão padrão');
-    } else {
-      setCards((prev) =>
-        prev.map((c) => ({ ...c, is_default: c.id === cardId }))
-      );
-      toast.success('Cartão padrão atualizado');
+      // Fallback: two-step update if RPC not available
+      await supabase.from('saved_cards').update({ is_default: false }).eq('user_id', user.id);
+      const { error: e2 } = await supabase
+        .from('saved_cards').update({ is_default: true }).eq('id', cardId).eq('user_id', user.id);
+      if (e2) {
+        toast.error('Erro ao definir cartão padrão');
+        setSettingDefaultId(null);
+        return;
+      }
     }
+
+    setCards((prev) => prev.map((c) => ({ ...c, is_default: c.id === cardId })));
+    toast.success('Cartão padrão atualizado');
     setSettingDefaultId(null);
   };
 
@@ -196,18 +226,35 @@ const SavedCards = () => {
                           : <Star className="w-4 h-4" />}
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(card.id)}
-                      disabled={deletingId === card.id}
-                      title="Remover cartão"
-                    >
-                      {deletingId === card.id
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <Trash2 className="w-4 h-4" />}
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-8 h-8 text-muted-foreground hover:text-destructive"
+                          disabled={deletingId === card.id}
+                          title="Remover cartão"
+                        >
+                          {deletingId === card.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remover cartão?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            •••• {card.last_four} será removido permanentemente.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(card.id)}>
+                            Remover
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </div>

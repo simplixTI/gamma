@@ -113,7 +113,22 @@ export function useAuth() {
         }
       } else {
         // No role found — could be OAuth user returning from redirect
-        const pendingRole = sessionStorage.getItem('pending_oauth_role') as UserRole | null;
+        let pendingRole: UserRole | null = null;
+        const raw = sessionStorage.getItem('pending_oauth_role');
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            // Discard if older than 10 minutes to avoid stale role from a previous login
+            if (Date.now() - parsed.ts > 10 * 60 * 1000) {
+              sessionStorage.removeItem('pending_oauth_role');
+            } else {
+              pendingRole = parsed.role as UserRole;
+            }
+          } catch {
+            // Fallback: value is a plain string (legacy format)
+            pendingRole = raw as UserRole;
+          }
+        }
         if (pendingRole) {
           sessionStorage.removeItem('pending_oauth_role');
           await createOAuthProfile(userId, pendingRole);
@@ -127,33 +142,27 @@ export function useAuth() {
     }
   }, [fetchingRef]);
 
-  const createOAuthProfile = async (userId: string, role: UserRole) => {
+  const createOAuthProfile = async (userId: string, _requestedRole: UserRole) => {
+    // OAuth users always get the passenger role — pilot accounts require the dedicated
+    // registration form and admin approval. Never trust a client-supplied role for pilots.
+    const assignedRole: UserRole = 'passenger';
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     const fullName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || '';
     const email = currentUser?.email || '';
 
-    await supabase.from('user_roles').insert({ user_id: userId, role });
+    const { error: roleError } = await supabase.from('user_roles').insert({ user_id: userId, role: assignedRole });
+    if (roleError) throw new Error(`Erro ao criar perfil: ${roleError.message}`);
 
-    if (role === 'passenger') {
-      await supabase.from('passenger_profiles').insert({
-        user_id: userId,
-        full_name: fullName,
-        phone: '',
-        email,
-        cpf: '',
-      });
-      await fetchPassengerProfile(userId);
-    } else {
-      await supabase.from('pilot_profiles').insert({
-        user_id: userId,
-        full_name: fullName,
-        phone: '',
-        email,
-        cpf: '',
-      });
-      await fetchPilotProfile(userId);
-    }
-    setRole(role);
+    const { error: profileError } = await supabase.from('passenger_profiles').insert({
+      user_id: userId,
+      full_name: fullName,
+      phone: '',
+      email,
+      cpf: '',
+    });
+    if (profileError) throw new Error(`Erro ao criar perfil: ${profileError.message}`);
+    await fetchPassengerProfile(userId);
+    setRole(assignedRole);
   };
 
   const fetchPassengerProfile = async (userId: string) => {
@@ -278,8 +287,8 @@ export function useAuth() {
   };
 
   const signInWithGoogle = async (role: UserRole) => {
-    // Store role in sessionStorage (cleared on tab close; safer than localStorage for XSS)
-    sessionStorage.setItem('pending_oauth_role', role);
+    // Store role in sessionStorage with timestamp so it can be discarded if stale
+    sessionStorage.setItem('pending_oauth_role', JSON.stringify({ role, ts: Date.now() }));
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -323,6 +332,7 @@ export function useAuth() {
       toast.error('Erro ao sair');
       throw error;
     }
+    sessionStorage.removeItem('pending_oauth_role');
     setUser(null);
     setSession(null);
     setRole(null);
@@ -332,6 +342,18 @@ export function useAuth() {
 
   const uploadPhoto = async (file: File, bucket: 'avatars' | 'boat-photos') => {
     if (!user) throw new Error('User not authenticated');
+
+    // Validate file size (max 5MB)
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE_BYTES) {
+      throw new Error(`Arquivo muito grande. Máximo permitido: 5MB. Seu arquivo: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+    }
+
+    // Validate file type (images only)
+    const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'];
+    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+      throw new Error('Formato inválido. Use JPG, PNG, WebP ou HEIC.');
+    }
 
     const fileExt = file.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
@@ -354,9 +376,15 @@ export function useAuth() {
   const updatePassengerProfile = async (updates: Partial<PassengerProfile>) => {
     if (!user) throw new Error('User not authenticated');
 
+    // Strip fields that must not be set client-side
+    const safeUpdates = { ...updates };
+    delete (safeUpdates as Record<string, unknown>).wallet_balance;
+    delete (safeUpdates as Record<string, unknown>).rating;
+    delete (safeUpdates as Record<string, unknown>).user_id;
+
     const { error } = await supabase
       .from('passenger_profiles')
-      .update(updates)
+      .update(safeUpdates)
       .eq('user_id', user.id);
 
     if (error) {
@@ -369,9 +397,20 @@ export function useAuth() {
   const updatePilotProfile = async (updates: Partial<PilotProfile>) => {
     if (!user) throw new Error('User not authenticated');
 
+    // Strip fields that pilots must never change themselves — approval state is
+    // exclusively managed by admins via the admin panel.
+    const safeUpdates = { ...updates };
+    delete (safeUpdates as Record<string, unknown>).is_verified;
+    delete (safeUpdates as Record<string, unknown>).is_active;
+    delete (safeUpdates as Record<string, unknown>).approval_status;
+    delete (safeUpdates as Record<string, unknown>).reviewed_by;
+    delete (safeUpdates as Record<string, unknown>).reviewed_at;
+    delete (safeUpdates as Record<string, unknown>).total_earnings;
+    delete (safeUpdates as Record<string, unknown>).rating;
+
     const { error } = await supabase
       .from('pilot_profiles')
-      .update(updates)
+      .update(safeUpdates)
       .eq('user_id', user.id);
 
     if (error) {

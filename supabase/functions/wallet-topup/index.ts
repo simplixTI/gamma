@@ -10,10 +10,10 @@ const MP_API = 'https://api.mercadopago.com';
 function getPixExpiry24h(): string {
   const d = new Date();
   d.setHours(d.getHours() + 24);
+  // Subtract 3h for BRT, then print as if UTC with -03:00 suffix
+  const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  let hour = d.getUTCHours() - 3;
-  if (hour < 0) hour += 24;
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(hour)}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.000-03:00`;
+  return `${brt.getUTCFullYear()}-${pad(brt.getUTCMonth() + 1)}-${pad(brt.getUTCDate())}T${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}:${pad(brt.getUTCSeconds())}.000-03:00`;
 }
 
 Deno.serve(async (req) => {
@@ -32,12 +32,33 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    const { userId, amount } = await req.json();
+    // Authenticate caller — userId must come from JWT, not request body (CWE-639)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const userClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    if (!userId || !amount || Number(amount) < 5) {
+    const { amount } = await req.json();
+    // userId is always taken from the authenticated session — never from the request body
+    const userId = user.id;
+
+    if (!amount || Number(amount) < 5) {
       return new Response(JSON.stringify({
         success: false,
-        error: 'userId and amount (min R$5) are required',
+        error: 'amount (min R$5) is required',
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -96,7 +117,7 @@ Deno.serve(async (req) => {
       date_of_expiration: getPixExpiry24h(),
     };
 
-    console.log('Creating MP PIX for wallet top-up:', { userId, amount: totalAmount, txId: tx.id });
+    console.log('Creating MP PIX for wallet top-up');
 
     const mpRes = await fetch(`${MP_API}/v1/payments`, {
       method: 'POST',
@@ -111,8 +132,13 @@ Deno.serve(async (req) => {
     const mpData = await mpRes.json();
 
     if (!mpRes.ok) {
-      console.error('MP API error for wallet top-up:', mpRes.status, mpData);
-      await supabase.from('wallet_transactions').delete().eq('id', tx.id);
+      console.error('MP API error for wallet top-up:', mpRes.status);
+      // FIX [MEDIUM]: Mark as 'failed' instead of deleting — preserves the audit trail.
+      // Previously used DELETE which silently dropped the record if the DELETE also failed.
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'failed', completed_at: new Date().toISOString() })
+        .eq('id', tx.id);
       throw new Error(mpData.message || `MP API error: ${mpRes.status}`);
     }
 
@@ -129,7 +155,7 @@ Deno.serve(async (req) => {
       })
       .eq('id', tx.id);
 
-    console.log('Wallet top-up PIX created:', { mpId: mpData.id, txId: tx.id });
+    console.log('Wallet top-up PIX created successfully');
 
     return new Response(JSON.stringify({
       success: true,

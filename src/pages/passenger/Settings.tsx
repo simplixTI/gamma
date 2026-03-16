@@ -1,14 +1,52 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, Moon, Globe, Shield, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Bell, Moon, Globe, Shield, ChevronRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
 import SimplixFooter from '@/components/SimplixFooter';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const Settings = () => {
   const navigate = useNavigate();
   const { settings, updateSetting, isLoaded } = useSettings();
+  const { signOut } = useAuthContext();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      // Log audit trail for LGPD compliance before deletion
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.rpc('request_account_deletion', { p_user_id: user.id });
+      }
+      const { data, error } = await supabase.functions.invoke('delete-account');
+      if (error || (data && !data.success)) {
+        throw new Error(error?.message ?? data?.error ?? 'Erro ao deletar conta');
+      }
+      await signOut();
+      navigate('/');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleToggle = (
     key: 'notifications' | 'darkMode' | 'shareLocation',
@@ -117,6 +155,40 @@ const Settings = () => {
           <p className="text-xs text-muted text-center">
             © {new Date().getFullYear()} Gamma. Todos os direitos reservados.
           </p>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="pt-2 border-t border-destructive/30">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                className="w-full flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4" />
+                Deletar minha conta
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação é irreversível. Todos os seus dados, histórico de viagens e carteira
+                  serão permanentemente removidos conforme a LGPD.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeleting ? 'Deletando...' : 'Deletar conta'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
           <SimplixFooter />

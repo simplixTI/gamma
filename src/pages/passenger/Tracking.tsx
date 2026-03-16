@@ -2,6 +2,16 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Share2, CreditCard, Clock, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import GoogleMapView, { RouteInfo } from '@/components/GoogleMapView';
 import PilotCard from '@/components/PilotCard';
 import RideChat from '@/components/RideChat';
@@ -24,6 +34,8 @@ const Tracking = () => {
     currentPilot,
     origin,
     destination,
+    setOrigin,
+    setDestination,
     calculatePrice,
     setRideStatus
   } = useApp();
@@ -37,6 +49,8 @@ const Tracking = () => {
   });
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [loadingRide, setLoadingRide] = useState(true);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const { playSound } = useNotificationSound();
   const { notifyPilotArrived } = useNotifications();
   // Deduplication: only fire status-change side-effects once per status value
@@ -134,37 +148,9 @@ const Tracking = () => {
   useEffect(() => {
     if (!rideId) return;
 
-    const fetchRide = async () => {
-      const { data, error } = await supabase
-        .from('rides')
-        .select('*')
-        .eq('id', rideId)
-        .single();
-
-      if (data) {
-        const ride = data as DbRide;
-        setCurrentRide(ride);
-        if (ride.pilot_lat && ride.pilot_lng) {
-          setPilotPosition({ lat: ride.pilot_lat, lng: ride.pilot_lng });
-        }
-
-        // Handle status changes (for polling fallback)
-        if (lastStatusRef.current && lastStatusRef.current !== ride.status) {
-          handleStatusChange(ride.status);
-        }
-        lastStatusRef.current = ride.status;
-        
-        // Check current status and redirect if needed
-        if (ride.status === 'in_progress') {
-          navigate('/passenger/in-ride', { state: { rideId } });
-        } else if (ride.status === 'completed') {
-          navigate('/passenger/completed', { state: { rideId } });
-        }
-      }
-    };
-
+    // handleStatusChange must be defined inside the effect so it closes over
+    // the latest rideId. handledStatusRef deduplicates across polling + realtime.
     const handleStatusChange = (status: string) => {
-      // Deduplicate: only fire once per distinct status value
       if (handledStatusRef.current === status) return;
       handledStatusRef.current = status;
 
@@ -181,6 +167,52 @@ const Tracking = () => {
       } else if (status === 'cancelled') {
         toast.error('Corrida cancelada');
         navigate('/passenger');
+      }
+    };
+
+    const fetchRide = async () => {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('id, status, pilot_id, pilot_name, pilot_phone, pilot_lat, pilot_lng, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, created_at, payment_status')
+        .eq('id', rideId)
+        .single();
+
+      if (error) {
+        console.error('[Tracking] fetchRide error:', error);
+        setLoadingRide(false);
+        return;
+      }
+
+      if (data) {
+        const ride = data as DbRide;
+        setCurrentRide(ride);
+        setLoadingRide(false);
+        if (ride.pilot_lat && ride.pilot_lng) {
+          setPilotPosition({ lat: ride.pilot_lat, lng: ride.pilot_lng });
+        }
+
+        // Restore origin/destination if lost after page refresh
+        if (!origin && ride.origin_name) {
+          setOrigin({ id: ride.origin_pier_id || 'origin', name: ride.origin_name, address: ride.origin_address || '', coordinates: [ride.origin_lng, ride.origin_lat] });
+        }
+        if (!destination && ride.destination_name) {
+          setDestination({ id: ride.destination_pier_id || 'destination', name: ride.destination_name || '', address: ride.destination_address || '', coordinates: [ride.destination_lng || 0, ride.destination_lat || 0] });
+        }
+
+        // Handle status changes (for polling fallback)
+        if (lastStatusRef.current && lastStatusRef.current !== ride.status) {
+          handleStatusChange(ride.status);
+        }
+        lastStatusRef.current = ride.status;
+
+        // Check current status and redirect if needed
+        if (ride.status === 'in_progress') {
+          navigate('/passenger/in-ride', { state: { rideId } });
+        } else if (ride.status === 'completed') {
+          navigate('/passenger/completed', { state: { rideId } });
+        }
+      } else {
+        setLoadingRide(false);
       }
     };
 
@@ -225,21 +257,42 @@ const Tracking = () => {
       clearInterval(pollingInterval);
       supabase.removeChannel(channel);
     };
-  }, [rideId, navigate, setRideStatus, playSound]);
+  // origin/destination intentionally excluded: restoring them is a one-time
+  // side-effect on first load; including them would cause the subscription to
+  // re-subscribe every time those values change, which is too expensive.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId, navigate, setRideStatus, playSound, setOrigin, setDestination]);
 
 
   const handleCancel = async () => {
-    if (rideId) {
-      const { error } = await supabase
-        .from('rides')
-        .update({ status: 'cancelled' })
-        .eq('id', rideId);
-      if (error) {
-        console.error('[Tracking] Error cancelling ride:', error);
-        toast.error('Erro ao cancelar corrida. Tente novamente.');
-        return;
-      }
+    if (!rideId) return;
+
+    // Re-fetch the current status from DB to avoid acting on stale local state
+    // (currentRide.status may be up to 5s old due to the polling interval).
+    const { data: freshRide } = await supabase
+      .from('rides')
+      .select('status')
+      .eq('id', rideId)
+      .single();
+
+    if (freshRide && freshRide.status !== 'pending') {
+      toast.error('Corrida já foi aceita, não é possível cancelar');
+      return;
     }
+
+    const { error } = await supabase
+      .from('rides')
+      .update({ status: 'cancelled' })
+      .eq('id', rideId)
+      // Extra guard: only cancel if still pending (prevents a race with pilot accept)
+      .eq('status', 'pending');
+
+    if (error) {
+      console.error('[Tracking] Error cancelling ride:', error);
+      toast.error('Erro ao cancelar corrida. Tente novamente.');
+      return;
+    }
+
     setRideStatus('idle');
     navigate('/passenger');
   };
@@ -251,8 +304,47 @@ const Tracking = () => {
     }
   }, [currentPilot, currentRide, navigate]);
 
-  // Show nothing while ride/pilot data is loading to avoid null crashes
-  if (!currentPilot || !currentRide) return null;
+  // Show spinner while ride data is loading
+  if (loadingRide || !currentRide) {
+    return (
+      <div className="h-screen h-[100dvh] bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Carregando corrida...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If ride loaded but no pilot context (e.g. after page refresh, pilot not in app state)
+  // Show minimal tracking screen instead of crashing
+  if (!currentPilot && currentRide) {
+    return (
+      <div className="h-screen h-[100dvh] bg-background flex flex-col items-center justify-center gap-4 p-6">
+        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+          <svg className="w-8 h-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.25 0 2.45-.2 3.57-.57a9.9 9.9 0 007.86 0C16.55 22.8 17.75 23 19 23h3v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.79l-1.2-2.4C20.4 8.51 20 7.77 20 7V6c0-1.1-.9-2-2-2h-1V1h-2v3H9V1H7v3H6C4.9 4 4 4.9 4 6v1c0 .77-.4 1.51-.63 2.13l-1.2 2.4a1 1 0 00-.06.79L3.95 19z"/>
+          </svg>
+        </div>
+        <div className="text-center">
+          <p className="font-semibold text-foreground">Piloto a caminho</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {currentRide.origin_name} → {currentRide.destination_name || 'Destino'}
+          </p>
+          <p className="text-sm font-bold text-primary mt-2">
+            R$ {Number(currentRide.price).toFixed(2).replace('.', ',')}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          className="text-destructive hover:text-destructive text-sm"
+          onClick={handleCancel}
+        >
+          Cancelar viagem
+        </Button>
+      </div>
+    );
+  }
 
   const price = currentRide ? Number(currentRide.price) : calculatePrice();
   const status = currentRide?.status || 'accepted';
@@ -293,8 +385,8 @@ const Tracking = () => {
         >
           <MessageCircle className="w-4 h-4" />
           {unreadMessages > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-              {unreadMessages}
+            <span className="absolute -top-1 -right-1 w-auto min-w-[20px] px-1 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
+              {unreadMessages > 9 ? '9+' : unreadMessages}
             </span>
           )}
         </Button>
@@ -303,6 +395,16 @@ const Tracking = () => {
           variant="ghost"
           size="icon"
           className="bg-card shadow-soft w-10 h-10"
+          onClick={() => {
+            const text = `Acompanhe minha viagem: ${origin?.name || ''} → ${destination?.name || ''}`;
+            if (navigator.share) {
+              navigator.share({ title: 'Gamma – minha viagem', text }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(text).catch(() => {});
+              toast.info('Link copiado!');
+            }
+          }}
+          title="Compartilhar viagem"
         >
           <Share2 className="w-4 h-4" />
         </Button>
@@ -351,7 +453,9 @@ const Tracking = () => {
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Piloto → Embarque</p>
                 <p className="font-semibold text-foreground text-sm mt-0.5">
-                  {routeInfo.pilotToOrigin.distanceMeters < 1000
+                  {routeInfo.pilotToOrigin.distanceMeters === 0
+                    ? '...'
+                    : routeInfo.pilotToOrigin.distanceMeters < 1000
                     ? `${routeInfo.pilotToOrigin.distanceMeters}m`
                     : `${(routeInfo.pilotToOrigin.distanceMeters / 1000).toFixed(1)}km`}
                 </p>
@@ -421,12 +525,37 @@ const Tracking = () => {
         <Button
           variant="ghost"
           fullWidth
-          onClick={handleCancel}
+          onClick={() => setShowCancelDialog(true)}
           className="text-destructive hover:text-destructive hover:bg-destructive/10 h-10 text-sm"
         >
           Cancelar viagem
         </Button>
       </div>
+
+      {/* Cancel confirmation dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar viagem?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {currentRide?.status !== 'pending'
+                ? 'Sua viagem já foi aceita por um piloto e não pode ser cancelada.'
+                : 'Tem certeza que deseja cancelar? O piloto será notificado.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            {currentRide?.status === 'pending' && (
+              <AlertDialogAction
+                onClick={() => { setShowCancelDialog(false); handleCancel(); }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Cancelar viagem
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Chat */}
       {rideId && (

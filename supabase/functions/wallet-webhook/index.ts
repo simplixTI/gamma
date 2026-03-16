@@ -35,7 +35,13 @@ async function verifyMpSignature(
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  return computed === v1;
+  // Constant-time comparison to prevent timing attacks on signature verification
+  if (computed.length !== v1.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ v1.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function ok(body: Record<string, unknown> = { received: true }): Response {
@@ -57,17 +63,20 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+    if (!MP_WEBHOOK_SECRET) {
+      console.error('[wallet-webhook] MP_WEBHOOK_SECRET not configured — rejecting all webhook calls');
+      return ok({ error: 'webhook_not_configured' });
+    }
+
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     const rawBody = await req.text();
-    console.log('MP wallet-webhook received:', rawBody.substring(0, 200));
+    console.log('MP wallet-webhook received');
 
-    if (MP_WEBHOOK_SECRET) {
-      const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
-      if (!valid) {
-        console.error('Invalid MP webhook signature');
-        return ok({ error: 'invalid_signature' });
-      }
+    const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
+    if (!valid) {
+      console.error('Invalid MP webhook signature');
+      return ok({ error: 'invalid_signature' });
     }
 
     const body = JSON.parse(rawBody);
@@ -89,16 +98,12 @@ Deno.serve(async (req) => {
     });
 
     if (!mpRes.ok) {
-      console.error('Failed to fetch MP payment:', mpPaymentId, mpRes.status);
+      console.error('Failed to fetch MP payment:', mpRes.status);
       return ok({ error: 'mp_fetch_failed' });
     }
 
     const mpPayment = await mpRes.json();
-    console.log('MP wallet payment status:', {
-      id: mpPaymentId,
-      status: mpPayment.status,
-      ref: mpPayment.external_reference,
-    });
+    console.log('MP wallet payment status:', mpPayment.status);
 
     if (mpPayment.status !== 'approved') {
       return ok({ status: mpPayment.status });
@@ -132,8 +137,22 @@ Deno.serve(async (req) => {
     }
 
     if (!tx) {
-      console.error('Wallet transaction not found for MP payment:', mpPaymentId);
+      console.error('Wallet transaction not found for MP payment');
       return ok({ error: 'transaction_not_found' });
+    }
+
+    // Idempotency guard: atomically claim the transaction before crediting.
+    // If another webhook already claimed it, this update will match 0 rows.
+    const { count } = await supabase
+      .from('wallet_transactions')
+      .update({ status: 'processing' })
+      .eq('id', tx.id)
+      .eq('status', 'pending')
+      .select('id', { count: 'exact', head: true });
+
+    if (!count || count === 0) {
+      console.log('Wallet transaction already processed (duplicate webhook), skipping');
+      return ok({ success: true, duplicate: true });
     }
 
     // Credit the wallet using the DB function
@@ -145,11 +164,16 @@ Deno.serve(async (req) => {
     });
 
     if (creditError) {
+      // Rollback so webhook can retry
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'pending' })
+        .eq('id', tx.id);
       console.error('Error crediting wallet:', creditError);
       return ok({ error: 'credit_failed' });
     }
 
-    console.log(`Wallet credited: user ${tx.user_id}, amount ${tx.amount}`);
+    console.log('Wallet credited successfully');
     return ok({ success: true });
 
   } catch (error: unknown) {

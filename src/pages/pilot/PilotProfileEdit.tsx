@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, Phone, Ship, CreditCard, Camera, Save, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ const PilotProfileEdit = () => {
   const { pilotId, loading: pilotLoading } = usePilotStats();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<Partial<PilotProfile>>({
     name: '',
     phone: '',
@@ -39,6 +40,31 @@ const PilotProfileEdit = () => {
     pix_key: '',
   });
   const [isNewProfile, setIsNewProfile] = useState(false);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE_BYTES) {
+      toast.error(`Arquivo muito grande. Máximo permitido: 5MB. Seu arquivo: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file type (images only)
+    const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'];
+    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+      toast.error('Formato inválido. Use JPG, PNG, WebP ou HEIC.');
+      e.target.value = '';
+      return;
+    }
+
+    // File is valid — preview it locally
+    const objectUrl = URL.createObjectURL(file);
+    setProfile((prev) => ({ ...prev, photo_url: objectUrl }));
+  };
 
   useEffect(() => {
     if (pilotLoading || !pilotId) return;
@@ -83,20 +109,21 @@ const PilotProfileEdit = () => {
     setSaving(true);
 
     try {
-      const { error } = await supabase
-        .from('pilots')
-        .update({
-          name: profile.name,
-          phone: profile.phone,
-          boat_name: profile.boat_name,
-          boat_capacity: profile.boat_capacity,
-          license_number: profile.license_number,
-          pix_key: profile.pix_key,
-        })
-        .eq('id', pilotId);
+      const profileData = {
+        name: profile.name,
+        phone: profile.phone,
+        boat_name: profile.boat_name,
+        boat_capacity: profile.boat_capacity,
+        license_number: profile.license_number,
+        pix_key: profile.pix_key,
+      };
+
+      const { error } = isNewProfile
+        ? await supabase.from('pilots').insert({ id: pilotId, ...profileData })
+        : await supabase.from('pilots').update(profileData).eq('id', pilotId);
 
       if (error) throw error;
-      toast.success('Perfil atualizado!');
+      toast.success(isNewProfile ? 'Perfil criado!' : 'Perfil atualizado!');
       navigate('/pilot');
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -143,9 +170,20 @@ const PilotProfileEdit = () => {
               <User className="w-12 h-12 text-muted-foreground" />
             )}
           </div>
-          <button className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-md">
+          <button
+            className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-md"
+            onClick={() => photoInputRef.current?.click()}
+            type="button"
+          >
             <Camera className="w-4 h-4 text-primary-foreground" />
           </button>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
+            className="hidden"
+            onChange={handlePhotoChange}
+          />
         </div>
         {profile.is_verified && (
           <div className="flex items-center gap-1 mt-2 text-success text-sm">

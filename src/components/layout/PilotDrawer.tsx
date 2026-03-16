@@ -61,10 +61,11 @@ const PilotDrawer = ({ open, onOpenChange, stats }: PilotDrawerProps) => {
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-primary-foreground/20 flex items-center justify-center overflow-hidden">
                   {pilotProfile?.photo_url ? (
-                    <img 
-                      src={pilotProfile.photo_url} 
-                      alt="Profile" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={pilotProfile.photo_url}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <Ship className="w-7 h-7" />

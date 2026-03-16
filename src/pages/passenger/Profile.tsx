@@ -12,6 +12,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useReferral } from '@/hooks/useReferral';
 import { toast } from 'sonner';
 import SimplixFooter from '@/components/SimplixFooter';
+import { validateCPF } from '@/utils/validators';
 
 const menuItems = [
   { icon: History,    label: 'Histórico de Viagens', path: '/passenger/history' },
@@ -82,6 +83,13 @@ const Profile = () => {
 
   const handleSave = async () => {
     if (!fullName.trim()) { toast.error('Nome é obrigatório'); return; }
+
+    const cpfDigits = cpf.replace(/\D/g, '');
+    if (cpfDigits && !validateCPF(cpfDigits)) {
+      toast.error('CPF inválido. Verifique os dígitos.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await updatePassengerProfile({
