@@ -266,7 +266,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
           <h3 className="font-bold text-foreground mb-2 text-sm">API Key não configurada</h3>
           <p className="text-xs text-muted mb-3">
-            Configure VITE_GOOGLE_MAPS_API_KEY no arquivo .env
+            Configure VITE_GOOGLE_MAPS_KEY no arquivo .env
           </p>
         </div>
       </div>

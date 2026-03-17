@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -93,7 +94,7 @@ async function handleRidePayment(
     return ok({ error: 'invalid_ride_id_format' });
   }
 
-  const failedStatuses = ['rejected', 'cancelled', 'refunded', 'charged_back'];
+  const failedStatuses = ['rejected', 'cancelled', 'refunded', 'charged_back', 'expired'];
 
   if (mpPayment.status !== 'approved') {
     if (failedStatuses.includes(String(mpPayment.status))) {
@@ -281,8 +282,11 @@ Deno.serve(async (req) => {
 
     const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
     if (!valid) {
-      console.error('Invalid MP webhook signature');
-      return ok({ error: 'invalid_signature' });
+      console.error('Invalid MP webhook signature — ignoring');
+      return new Response(JSON.stringify({ received: true, valid: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const body = JSON.parse(rawBody);

@@ -209,7 +209,7 @@ const RideHistory = () => {
           </div>
         )}
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

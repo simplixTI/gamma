@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
+// NOTE: Set ALLOWED_ORIGIN env var in Supabase secrets for production
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -42,7 +44,22 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // Reject if passenger has an active or in-progress ride
+    const { data: activeRide } = await adminClient
+      .from('rides')
+      .select('id')
+      .eq('passenger_user_id', userId)
+      .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
+      .maybeSingle();
+
+    if (activeRide) {
+      return new Response(JSON.stringify({ success: false, error: 'active_ride_exists' }), {
+        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Delete in foreign-key-safe order
+    await adminClient.from('user_settings').delete().eq('user_id', userId);
     await adminClient.from('payment_audit_log').delete().eq('user_id', userId);
     await adminClient.from('wallet_transactions').delete().eq('user_id', userId);
 
@@ -57,10 +74,14 @@ Deno.serve(async (req: Request) => {
     }
 
     await adminClient.from('favorite_locations').delete().eq('user_id', userId);
-    await adminClient.from('referral_uses').delete().or(`referrer_user_id.eq.${userId},referred_user_id.eq.${userId}`);
-    await adminClient.from('referral_codes').delete().eq('user_id', userId);
+    // referral_discounts: remove entries where this user earned the discount OR was the referred user
+    await adminClient.from('referral_discounts').delete().eq('passenger_user_id', userId);
+    await adminClient.from('referral_discounts').delete().eq('earned_from_user_id', userId);
     await adminClient.from('support_tickets').delete().eq('user_id', userId);
-    await adminClient.from('ride_reviews').delete().or(`passenger_user_id.eq.${userId},pilot_user_id.eq.${userId}`);
+    // ride_reviews uses reviewer_id / reviewee_id
+    await adminClient.from('ride_reviews').delete().or(`reviewer_id.eq.${userId},reviewee_id.eq.${userId}`);
+    await adminClient.from('push_tokens').delete().eq('user_id', userId);
+    await adminClient.from('saved_cards').delete().eq('user_id', userId);
     await adminClient.from('rides').delete().eq('passenger_user_id', userId);
     await adminClient.from('passenger_profiles').delete().eq('user_id', userId);
 

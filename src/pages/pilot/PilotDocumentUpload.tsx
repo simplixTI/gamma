@@ -34,20 +34,23 @@ const PilotDocumentUpload = () => {
   const [pilotId, setPilotId] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<UploadedDoc[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState<string>('pending');
+  const [approvalNotes, setApprovalNotes] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!user) return;
     const { data: profile } = await supabase
       .from('pilot_profiles')
-      .select('id, approval_status')
+      .select('id, approval_status, approval_notes')
       .eq('user_id', user.id)
       .maybeSingle();
 
     if (!profile) { navigate('/pilot', { replace: true }); return; }
     setPilotId(profile.id);
     setApprovalStatus(profile.approval_status ?? 'pending');
+    setApprovalNotes((profile as { approval_notes?: string }).approval_notes ?? null);
 
     const { data: docs } = await supabase
       .from('pilot_documents')
@@ -68,6 +71,7 @@ const PilotDocumentUpload = () => {
     }
 
     setUploading(type);
+    setUploadProgress((prev) => ({ ...prev, [type]: 1 }));
     try {
       const ext = file.name.split('.').pop() ?? 'jpg';
       const path = `${user.id}/${type}.${ext}`;
@@ -77,6 +81,7 @@ const PilotDocumentUpload = () => {
         .upload(path, file, { upsert: true });
 
       if (storageErr) throw storageErr;
+      setUploadProgress((prev) => ({ ...prev, [type]: 100 }));
 
       const { error: dbErr } = await supabase
         .from('pilot_documents')
@@ -99,6 +104,7 @@ const PilotDocumentUpload = () => {
     } catch (err) {
       console.error('Upload error:', err);
       toast.error('Erro ao enviar documento. Tente novamente.');
+      setUploadProgress((prev) => { const n = { ...prev }; delete n[type]; return n; });
     } finally {
       setUploading(null);
     }
@@ -138,8 +144,46 @@ const PilotDocumentUpload = () => {
     }
   };
 
+  const handleResubmit = async () => {
+    if (!pilotId) return;
+    const { error } = await supabase
+      .from('pilot_profiles')
+      .update({ approval_status: 'pending' })
+      .eq('id', pilotId);
+    if (error) {
+      toast.error('Erro ao reiniciar cadastro');
+    } else {
+      setApprovalStatus('pending');
+      setApprovalNotes(null);
+    }
+  };
+
   const getDocStatus = (type: string) => uploaded.find(u => u.document_type === type);
   const allUploaded = DOC_TYPES.every(d => uploaded.some(u => u.document_type === d.type));
+
+  if (approvalStatus === 'rejected') {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-destructive" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground">Cadastro reprovado</h1>
+        <p className="text-muted-foreground mt-2 mb-4">
+          Sua documentação não foi aprovada. Corrija os itens indicados e reenvie.
+        </p>
+        {approvalNotes && (
+          <div className="w-full max-w-sm bg-destructive/10 border border-destructive/30 rounded-xl p-4 mb-6 text-left">
+            <p className="text-sm font-semibold text-destructive mb-1">Motivo da reprovação:</p>
+            <p className="text-sm text-foreground">{approvalNotes}</p>
+          </div>
+        )}
+        <Button onClick={handleResubmit} className="mb-3">
+          Corrigir e reenviar documentos
+        </Button>
+        <Button variant="outline" onClick={() => navigate('/pilot')}>Voltar ao painel</Button>
+      </div>
+    );
+  }
 
   if (approvalStatus === 'approved') {
     return (
@@ -211,31 +255,39 @@ const PilotDocumentUpload = () => {
                 <p className="text-xs text-muted-foreground">{description}</p>
               </div>
 
-              <label className="shrink-0">
-                <input
-                  type="file"
-                  accept={accept}
-                  onChange={handleFileChange(type)}
-                  className="hidden"
-                  disabled={isUploading}
-                />
-                <Button
-                  variant={doc ? 'ghost' : 'outline'}
-                  size="sm"
-                  className={doc ? 'text-muted-foreground' : ''}
-                  disabled={isUploading}
-                  asChild
-                >
-                  <span>
-                    {isUploading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Upload className="w-4 h-4" />
-                    )}
-                    <span className="ml-1.5">{doc ? 'Trocar' : 'Enviar'}</span>
+              <div className="shrink-0 flex items-center gap-2">
+                {uploadProgress[type] && uploadProgress[type] < 100 && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Enviando...
                   </span>
-                </Button>
-              </label>
+                )}
+                <label>
+                  <input
+                    type="file"
+                    accept={accept}
+                    onChange={handleFileChange(type)}
+                    className="hidden"
+                    disabled={isUploading}
+                  />
+                  <Button
+                    variant={doc ? 'ghost' : 'outline'}
+                    size="sm"
+                    className={doc ? 'text-muted-foreground' : ''}
+                    disabled={isUploading}
+                    asChild
+                  >
+                    <span>
+                      {isUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      <span className="ml-1.5">{doc ? 'Trocar' : 'Enviar'}</span>
+                    </span>
+                  </Button>
+                </label>
+              </div>
             </div>
           );
         })}

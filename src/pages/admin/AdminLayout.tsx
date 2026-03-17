@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
   LayoutDashboard, Users, UserCheck, DollarSign,
-  Megaphone, LogOut, Menu, X, Loader2,
+  Megaphone, LogOut, Menu, X, Loader2, Route,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Usuários', icon: Users },
   { to: '/admin/pilots', label: 'Aprovação de Pilotos', icon: UserCheck },
+  { to: '/admin/rides', label: 'Corridas', icon: Route },
   { to: '/admin/financial', label: 'Financeiro', icon: DollarSign },
   { to: '/admin/ads', label: 'Anúncios', icon: Megaphone },
 ];
@@ -43,6 +44,15 @@ const AdminLayout = () => {
       setChecking(false);
     };
     check();
+
+    // Re-validate on token refresh / sign-out events so expired sessions redirect
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        check();
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleLogout = async () => {

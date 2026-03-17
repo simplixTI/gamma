@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, Calendar, DollarSign, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Calendar, DollarSign, ArrowUpRight, ArrowDownRight, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -13,14 +13,20 @@ type Period = 'day' | 'week' | 'month';
 
 interface Transaction {
   id: string;
-  type: 'ride' | 'tip';
+  type: 'ride' | 'tip' | 'failed';
   description: string;
   amount: number;
   time: string;
 }
 
+// Platform takes 70%; pilot receives 30% of gross fare
+const COMMISSION_PERCENT = 70;
+
 interface EarningsSummary {
   total: number;
+  gross: number;
+  commission: number;
+  net: number;
   rides: number;
   tips: number;
 }
@@ -30,7 +36,7 @@ const Earnings = () => {
   const { user } = useAuthContext();
   const [period, setPeriod] = useState<Period>('week');
   const [loading, setLoading] = useState(true);
-  const [current, setCurrent] = useState<EarningsSummary>({ total: 0, rides: 0, tips: 0 });
+  const [current, setCurrent] = useState<EarningsSummary>({ total: 0, gross: 0, commission: 0, net: 0, rides: 0, tips: 0 });
   const [previous, setPrevious] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
@@ -59,6 +65,16 @@ const Earnings = () => {
         .gte('completed_at', currentStart.toISOString())
         .order('completed_at', { ascending: false });
 
+      // Fetch failed-payment completed rides for this pilot in current period
+      const { data: failedRides } = await supabase
+        .from('rides')
+        .select('id, price, origin_name, destination_name, completed_at')
+        .eq('pilot_user_id', user.id)
+        .eq('status', 'completed')
+        .eq('payment_status', 'failed')
+        .gte('completed_at', currentStart.toISOString())
+        .order('completed_at', { ascending: false });
+
       // Fetch previous period for growth comparison
       const { data: previousRides } = await supabase
         .from('rides')
@@ -70,22 +86,27 @@ const Earnings = () => {
         .lt('completed_at', currentStart.toISOString());
 
       const rides = currentRides || [];
-      const totalRides = rides.reduce((sum, r) => sum + Number(r.price), 0);
+      const totalGross = rides.reduce((sum, r) => sum + Number(r.price), 0);
       const totalTips = rides.reduce((sum, r) => sum + Number(r.tip || 0), 0);
+      const totalCommission = Math.round(totalGross * COMMISSION_PERCENT) / 100;
+      const totalNet = Math.round((totalGross - totalCommission) * 100) / 100;
 
       setCurrent({
-        total: totalRides + totalTips,
+        total: totalNet + totalTips,
+        gross: totalGross,
+        commission: totalCommission,
+        net: totalNet,
         rides: rides.length,
         tips: totalTips,
       });
 
-      const prevTotal = (previousRides || []).reduce(
-        (sum, r) => sum + Number(r.price) + Number(r.tip || 0),
-        0
-      );
-      setPrevious(prevTotal);
+      const prevGross = (previousRides || []).reduce((sum, r) => sum + Number(r.price), 0);
+      const prevCommission = Math.round(prevGross * COMMISSION_PERCENT) / 100;
+      const prevNet = Math.round((prevGross - prevCommission) * 100) / 100;
+      const prevTips = (previousRides || []).reduce((sum, r) => sum + Number(r.tip || 0), 0);
+      setPrevious(prevNet + prevTips);
 
-      // Build transaction list
+      // Build transaction list — paid rides first, then failed rides
       const txs: Transaction[] = [];
       for (const r of rides) {
         const time = r.completed_at
@@ -107,6 +128,18 @@ const Earnings = () => {
             time,
           });
         }
+      }
+      for (const r of (failedRides || [])) {
+        const time = r.completed_at
+          ? format(new Date(r.completed_at), 'dd/MM HH:mm', { locale: ptBR })
+          : '--:--';
+        txs.push({
+          id: `failed-${r.id}`,
+          type: 'failed',
+          description: `${r.origin_name || 'Origem'} → ${r.destination_name || 'Destino'}`,
+          amount: Number(r.price),
+          time,
+        });
       }
       setTransactions(txs);
     } catch (err) {
@@ -156,7 +189,7 @@ const Earnings = () => {
         {/* Total Earnings */}
         <div className="bg-primary-foreground/10 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm opacity-80">Total de ganhos</p>
+            <p className="text-sm opacity-80">Ganhos líquidos</p>
             {previous > 0 && (
               <div className={`flex items-center gap-1 text-sm ${isPositive ? 'text-success' : 'text-destructive'}`}>
                 {isPositive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
@@ -167,7 +200,26 @@ const Earnings = () => {
           {loading ? (
             <Loader2 className="w-6 h-6 animate-spin text-primary-foreground/60" />
           ) : (
-            <p className="text-3xl font-bold">R$ {current.total.toFixed(2).replace('.', ',')}</p>
+            <>
+              <p className="text-3xl font-bold">R$ {current.net.toFixed(2).replace('.', ',')}</p>
+              <div className="mt-2 flex flex-col gap-1">
+                <div className="flex justify-between text-xs opacity-80">
+                  <span>Bruto (corridas)</span>
+                  <span>R$ {current.gross.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div className="flex justify-between text-xs opacity-70">
+                  <span>Comissão plataforma ({COMMISSION_PERCENT}%)</span>
+                  <span>- R$ {current.commission.toFixed(2).replace('.', ',')}</span>
+                </div>
+                {current.tips > 0 && (
+                  <div className="flex justify-between text-xs opacity-80">
+                    <span>Gorjetas</span>
+                    <span>+ R$ {current.tips.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs opacity-60 mt-2">{COMMISSION_PERCENT}% de comissão da plataforma já descontados</p>
+            </>
           )}
         </div>
       </header>
@@ -209,25 +261,36 @@ const Earnings = () => {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="bg-card rounded-xl p-4 flex items-center justify-between border border-border"
+                  className={`bg-card rounded-xl p-4 flex items-center justify-between border ${
+                    tx.type === 'failed' ? 'border-destructive/30' : 'border-border'
+                  }`}
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      tx.type === 'tip' ? 'bg-success/10' : 'bg-primary/10'
+                      tx.type === 'tip' ? 'bg-success/10' : tx.type === 'failed' ? 'bg-destructive/10' : 'bg-primary/10'
                     }`}>
                       {tx.type === 'tip' ? (
                         <DollarSign className="w-5 h-5 text-success" />
+                      ) : tx.type === 'failed' ? (
+                        <XCircle className="w-5 h-5 text-destructive" />
                       ) : (
                         <TrendingUp className="w-5 h-5 text-primary" />
                       )}
                     </div>
                     <div>
-                      <p className="font-medium text-foreground text-sm">{tx.description}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground text-sm">{tx.description}</p>
+                        {tx.type === 'failed' && (
+                          <span className="text-xs font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                            Pagamento falhou
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-muted">{tx.time}</p>
                     </div>
                   </div>
-                  <p className={`font-bold ${tx.type === 'tip' ? 'text-success' : 'text-foreground'}`}>
-                    +R$ {tx.amount.toFixed(2).replace('.', ',')}
+                  <p className={`font-bold ${tx.type === 'tip' ? 'text-success' : tx.type === 'failed' ? 'text-destructive line-through' : 'text-foreground'}`}>
+                    {tx.type === 'failed' ? '' : '+'}R$ {tx.amount.toFixed(2).replace('.', ',')}
                   </p>
                 </div>
               ))}
@@ -235,7 +298,7 @@ const Earnings = () => {
           )}
         </div>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

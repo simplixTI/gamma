@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.gamma.boattaxi",
+      "sha256_cert_fingerprints": [
+        "DC:4E:12:D0:E7:7D:5A:69:78:C6:3E:B1:53:22:A4:7B:FE:35:71:7A:80:18:DC:63:3E:FC:1B:70:A6:C4:71:16"
+      ]
+    }
+  }
+]

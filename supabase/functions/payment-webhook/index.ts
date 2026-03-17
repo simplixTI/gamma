@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -68,7 +69,10 @@ Deno.serve(async (req) => {
     // DEPRECATED: This endpoint is dead code. All MP webhooks are handled by mp-webhook.
     // Do NOT register this URL in the Mercado Pago dashboard.
     console.warn('[payment-webhook] DEPRECATED endpoint called — should not be receiving events');
-    return ok({ error: 'deprecated_endpoint', use: 'mp-webhook' });
+    return new Response(JSON.stringify({ error: 'deprecated', message: 'This endpoint is deprecated. Use /mp-webhook instead.' }), {
+      status: 410,
+      headers: { 'Content-Type': 'application/json' },
+    });
 
     const rawBody = await req.text();
     console.log('MP payment-webhook received:', rawBody.substring(0, 200));

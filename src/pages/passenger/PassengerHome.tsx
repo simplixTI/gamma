@@ -12,6 +12,7 @@ import { DbRide } from '@/types';
 import ActiveRideCard from '@/components/ActiveRideCard';
 import SimplixFooter from '@/components/SimplixFooter';
 import Logo from '@/components/Logo';
+import AdDisplay from '@/components/AdDisplay';
 
 const PassengerHome = () => {
   const navigate = useNavigate();
@@ -37,13 +38,17 @@ const PassengerHome = () => {
           id: 'origin',
           name: ride.origin_name,
           address: ride.origin_address || '',
-          coordinates: [ride.origin_lng, ride.origin_lat],
+          coordinates: (ride.origin_lng != null && ride.origin_lat != null)
+            ? [ride.origin_lng, ride.origin_lat]
+            : [0, 0],
         });
         setDestination({
           id: 'destination',
           name: ride.destination_name || 'Destino',
           address: ride.destination_address || '',
-          coordinates: [ride.destination_lng || 0, ride.destination_lat || 0],
+          coordinates: (ride.destination_lng != null && ride.destination_lat != null)
+            ? [ride.destination_lng, ride.destination_lat]
+            : [0, 0],
         });
         if (ride.pilot_id) {
           let pilotRating = 4.9;
@@ -57,7 +62,7 @@ const PassengerHome = () => {
           setCurrentPilot({
             id: ride.pilot_id,
             name: ride.pilot_name || 'Piloto',
-            photo: '/placeholder.svg',
+            photo: '',
             rating: pilotRating,
             boat: 'Lancha Rápida',
             phone: ride.pilot_phone || '',
@@ -211,10 +216,10 @@ const PassengerHome = () => {
           );
         })()}
 
-        {/* Destinos frequentes */}
+        {/* Pontos populares */}
         <section>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">
-            Destinos frequentes
+            Pontos populares
           </p>
           <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border">
             {locations.slice(0, 3).map((location, idx) => (
@@ -240,43 +245,8 @@ const PassengerHome = () => {
           </div>
         </section>
 
-        {/* Banner principal de parceiro */}
-        <section>
-          <div className="rounded-2xl overflow-hidden border border-primary/15 bg-gradient-to-br from-primary/8 via-primary/5 to-accent/5">
-            <div className="h-28 bg-gradient-to-br from-primary/15 to-accent/10 flex items-center justify-center relative overflow-hidden">
-              {/* Decorative wave */}
-              <div className="absolute inset-0 opacity-20">
-                <svg viewBox="0 0 400 100" className="w-full h-full" preserveAspectRatio="none">
-                  <path d="M0,50 C100,20 200,80 300,50 C350,35 375,45 400,50 L400,100 L0,100 Z" fill="hsl(var(--primary))" />
-                </svg>
-              </div>
-              <svg className="w-12 h-12 text-primary/50" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.25 0 2.45-.2 3.57-.57a9.9 9.9 0 007.86 0C16.55 22.8 17.75 23 19 23h3v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.06-.54-.06-.79l-1.2-2.4C20.4 8.51 20 7.77 20 7V6c0-1.1-.9-2-2-2h-1V1h-2v3H9V1H7v3H6C4.9 4 4 4.9 4 6v1c0 .77-.4 1.51-.63 2.13l-1.2 2.4a1 1 0 00-.06.79L3.95 19z"/>
-              </svg>
-            </div>
-            <div className="p-4">
-              <p className="font-bold text-foreground text-sm">Feito para a Ilha de Gigoia</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Este espaço será ocupado por anúncios de parceiros locais. Em breve!
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Banner secundário de parceiro */}
-        <div className="bg-card border border-border rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-muted/20 flex items-center justify-center shrink-0">
-            <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 2.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-foreground text-sm">Espaço para parceiros</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Restaurantes, lojas e serviços da ilha
-            </p>
-          </div>
-        </div>
+        {/* Anúncios de parceiros */}
+        <AdDisplay position="home" />
 
         <SimplixFooter />
       </div>
@@ -288,31 +258,33 @@ const PassengerHome = () => {
       >
         <div className="flex items-center">
           {/* Início */}
-          <button className="flex-1 flex flex-col items-center py-3 gap-1 text-primary cursor-pointer">
+          <button className="flex-1 flex flex-col items-center py-3 gap-1 text-primary" onClick={() => navigate('/passenger')} aria-label="Início">
             <div className="relative">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
               </svg>
-              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
             </div>
             <span className="text-[10px] font-semibold">Início</span>
+            <span className="w-4 h-0.5 rounded-full bg-primary" />
           </button>
 
           {/* Atividade */}
           <button
-            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors cursor-pointer"
+            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors"
             onClick={() => navigate('/passenger/history')}
+            aria-label="Atividade"
           >
-            <History className="w-5 h-5" />
+            <History className="w-5 h-5" aria-hidden="true" />
             <span className="text-[10px] font-medium">Atividade</span>
           </button>
 
           {/* Conta */}
           <button
-            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors cursor-pointer"
+            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors"
             onClick={() => navigate('/passenger/profile')}
+            aria-label="Conta"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="8" r="4" />
               <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
             </svg>

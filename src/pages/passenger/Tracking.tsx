@@ -40,6 +40,7 @@ const Tracking = () => {
     setRideStatus
   } = useApp();
   
+  const [localPilotData, setLocalPilotData] = useState<{ id: string; name: string; photo: string; rating: number; boat: string; phone: string } | null>(null);
   const [pilotPosition, setPilotPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [currentRide, setCurrentRide] = useState<DbRide | null>(null);
   const [proximityNotifications, setProximityNotifications] = useState({
@@ -55,6 +56,8 @@ const Tracking = () => {
   const { notifyPilotArrived } = useNotifications();
   // Deduplication: only fire status-change side-effects once per status value
   const handledStatusRef = useRef<string>('');
+  // Deduplication: only navigate once for each terminal status
+  const navigatedStatusRef = useRef<string>('');
 
   const handleNewMessage = useCallback(() => {
     if (!isChatOpen) {
@@ -205,11 +208,15 @@ const Tracking = () => {
         }
         lastStatusRef.current = ride.status;
 
-        // Check current status and redirect if needed
-        if (ride.status === 'in_progress') {
-          navigate('/passenger/in-ride', { state: { rideId } });
-        } else if (ride.status === 'completed') {
-          navigate('/passenger/completed', { state: { rideId } });
+        // Check current status and redirect if needed — guard prevents repeated navigation on every poll tick
+        if (navigatedStatusRef.current !== ride.status) {
+          if (ride.status === 'in_progress') {
+            navigatedStatusRef.current = ride.status;
+            navigate('/passenger/in-ride', { state: { rideId } });
+          } else if (ride.status === 'completed') {
+            navigatedStatusRef.current = ride.status;
+            navigate('/passenger/completed', { state: { rideId } });
+          }
         }
       } else {
         setLoadingRide(false);
@@ -218,8 +225,8 @@ const Tracking = () => {
 
     fetchRide();
 
-    // Polling fallback - check every 5 seconds
-    const pollingInterval = setInterval(fetchRide, 5000);
+    // 30-second fallback sync (only if realtime fails)
+    const pollingInterval = setInterval(fetchRide, 30000);
 
     // Subscribe to real-time updates
     const channel = supabase
@@ -249,7 +256,7 @@ const Tracking = () => {
       )
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
-          console.warn('[Tracking] Realtime channel error — relying on polling fallback');
+          console.warn('[Tracking] Realtime channel error — relying on 30s fallback sync');
         }
       });
 
@@ -297,12 +304,31 @@ const Tracking = () => {
     navigate('/passenger');
   };
 
-  // Redirect if ride data loaded but no pilot context and ride is in a non-trackable state
+  // If we have a ride but no pilot context (e.g. after page refresh), fetch pilot from ride data
   useEffect(() => {
-    if (!currentPilot && currentRide && currentRide.status !== 'accepted' && currentRide.status !== 'pilot_arriving' && currentRide.status !== 'in_progress') {
-      navigate('/passenger');
-    }
-  }, [currentPilot, currentRide, navigate]);
+    if (!currentRide?.pilot_id || currentPilot) return;
+    let mounted = true;
+
+    supabase
+      .from('pilot_profiles')
+      .select('id, full_name, phone, photo_url, rating, boat_type, boat_identification')
+      .eq('user_id', currentRide.pilot_id)
+      .single()
+      .then(({ data }) => {
+        if (mounted && data) {
+          setLocalPilotData({
+            id: data.id,
+            name: data.full_name || 'Piloto',
+            photo: data.photo_url || '',
+            rating: data.rating || 4.9,
+            boat: data.boat_type || 'Barco',
+            phone: data.phone || '',
+          });
+        }
+      });
+
+    return () => { mounted = false; };
+  }, [currentRide?.pilot_id, currentPilot]);
 
   // Show spinner while ride data is loading
   if (loadingRide || !currentRide) {
@@ -316,9 +342,11 @@ const Tracking = () => {
     );
   }
 
-  // If ride loaded but no pilot context (e.g. after page refresh, pilot not in app state)
+  const activePilot = currentPilot ?? localPilotData;
+
+  // If ride loaded but no pilot context and local fetch also pending/failed
   // Show minimal tracking screen instead of crashing
-  if (!currentPilot && currentRide) {
+  if (!activePilot && currentRide) {
     return (
       <div className="h-screen h-[100dvh] bg-background flex flex-col items-center justify-center gap-4 p-6">
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -399,7 +427,7 @@ const Tracking = () => {
             const text = `Acompanhe minha viagem: ${origin?.name || ''} → ${destination?.name || ''}`;
             if (navigator.share) {
               navigator.share({ title: 'Gamma – minha viagem', text }).catch(() => {});
-            } else {
+            } else if (navigator.clipboard?.writeText) {
               navigator.clipboard.writeText(text).catch(() => {});
               toast.info('Link copiado!');
             }
@@ -414,7 +442,7 @@ const Tracking = () => {
       <div className="absolute top-16 left-4 right-4 z-30 safe-area-top">
         <RideStatusBanner 
           phase={status as RidePhase} 
-          pilotName={currentPilot.name}
+          pilotName={activePilot.name}
         />
       </div>
 
@@ -422,18 +450,18 @@ const Tracking = () => {
       <div className="absolute bottom-0 left-0 right-0 z-30 p-3 space-y-3 animate-slide-up safe-area-bottom">
         {/* Pilot card */}
         <PilotCard
-          pilot={currentPilot}
+          pilot={activePilot}
           arrivalTime={pilotToOriginMinutes}
           distance={routeInfo.pilotToOrigin.distanceMeters > 0 ? routeInfo.pilotToOrigin.distanceMeters / 1000 : undefined}
           onCall={() => {
             const phone = currentRide?.pilot_phone;
             const digits = phone?.replace(/\D/g, '');
-            if (digits && digits.length >= 10) window.open(`tel:+55${digits}`);
+            if (digits && digits.length >= 10) window.location.href = `tel:+55${digits}`;
           }}
           onMessage={() => {
             const phone = currentRide?.pilot_phone;
             const digits = phone?.replace(/\D/g, '');
-            if (digits && digits.length >= 10) window.open(`https://wa.me/55${digits}`);
+            if (digits && digits.length >= 10) window.location.href = `https://wa.me/55${digits}`;
           }}
         />
 
@@ -544,7 +572,7 @@ const Tracking = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogCancel>{currentRide?.status !== 'pending' ? 'Entendido' : 'Voltar'}</AlertDialogCancel>
             {currentRide?.status === 'pending' && (
               <AlertDialogAction
                 onClick={() => { setShowCancelDialog(false); handleCancel(); }}

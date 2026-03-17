@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertTriangle, Clock, Route, Phone, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ const InRide = () => {
   const [currentRide, setCurrentRide] = useState<DbRide | null>(null);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [showEmergencyConfirm, setShowEmergencyConfirm] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const initialRideId = (location.state as any)?.rideId as string | undefined;
   const [rideId, setRideId] = useState<string | null>(initialRideId || null);
@@ -162,6 +164,18 @@ const InRide = () => {
     return () => clearInterval(interval);
   }, [startTime]);
 
+  // Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -196,6 +210,12 @@ const InRide = () => {
 
   return (
     <div className="h-screen h-[100dvh] bg-background relative overflow-hidden">
+      {isOffline && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-destructive text-destructive-foreground text-center text-xs py-2 font-medium">
+          Sem conexão — tentando reconectar...
+        </div>
+      )}
+
       {/* Map */}
       <div className="absolute inset-0">
         <GoogleMapView 
@@ -277,15 +297,36 @@ const InRide = () => {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          fullWidth
-          className="border-destructive text-destructive hover:bg-destructive/10 h-11"
-          onClick={() => window.open('tel:190')}
-        >
-          <AlertTriangle className="w-4 h-4 mr-2" />
-          Emergência (190)
-        </Button>
+        {!showEmergencyConfirm ? (
+          <Button
+            variant="outline"
+            fullWidth
+            className="border-destructive text-destructive hover:bg-destructive/10 h-11"
+            onClick={() => setShowEmergencyConfirm(true)}
+          >
+            <AlertTriangle className="w-4 h-4 mr-2" />
+            Emergência (190)
+          </Button>
+        ) : (
+          <div className="border border-destructive/50 rounded-xl p-3 bg-destructive/5">
+            <p className="text-sm font-semibold text-destructive text-center mb-2">Ligar para a Polícia (190)?</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 h-9"
+                onClick={() => setShowEmergencyConfirm(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 h-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                onClick={() => { window.open('tel:190'); setShowEmergencyConfirm(false); }}
+              >
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

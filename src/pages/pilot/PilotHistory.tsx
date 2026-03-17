@@ -205,7 +205,7 @@ const PilotHistory = () => {
           </div>
         )}
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

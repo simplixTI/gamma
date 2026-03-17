@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 const AuthCallback = () => {
   const navigate = useNavigate();
   const mountedRef = useRef(true);
+  const authSubscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -60,12 +61,14 @@ const AuthCallback = () => {
             async (_event, newSession) => {
               if (newSession) {
                 subscription.unsubscribe();
+                authSubscriptionRef.current = null;
                 await redirectByRole(newSession.user.id);
               }
             }
           );
-          // Cleanup subscription on unmount
-          return () => subscription.unsubscribe();
+          // Store ref so the useEffect cleanup can unsubscribe on unmount
+          authSubscriptionRef.current = subscription;
+          return;
         }
 
         await redirectByRole(session.user.id);
@@ -79,7 +82,11 @@ const AuthCallback = () => {
 
     handleCallback();
 
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      authSubscriptionRef.current?.unsubscribe();
+      authSubscriptionRef.current = null;
+    };
   }, [navigate]);
 
   return (

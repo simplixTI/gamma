@@ -9,36 +9,14 @@ import { SettingsInitializer } from "@/components/SettingsInitializer";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ConnectionStatusBanner from "@/components/ConnectionStatusBanner";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { useEffect } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { isNativeMobile, platform } from "./capacitor";
+
+// Eager loads — small/critical pages
 import Landing from "./pages/Landing";
 import PassengerAuth from "./pages/auth/PassengerAuth";
 import PilotAuth from "./pages/auth/PilotAuth";
 import AuthCallback from "./pages/auth/AuthCallback";
-import PassengerHome from "./pages/passenger/PassengerHome";
-import RequestRide from "./pages/passenger/RequestRide";
-import SearchingPilot from "./pages/passenger/SearchingPilot";
-import Tracking from "./pages/passenger/Tracking";
-import InRide from "./pages/passenger/InRide";
-import Completed from "./pages/passenger/Completed";
-import RideHistory from "./pages/passenger/RideHistory";
-import Profile from "./pages/passenger/Profile";
-import Payment from "./pages/passenger/Payment";
-import WalletPage from "./pages/passenger/Wallet";
-import Favorites from "./pages/passenger/Favorites";
-import Settings from "./pages/passenger/Settings";
-import Referral from "./pages/passenger/Referral";
-import Help from "./pages/passenger/Help";
-import SavedCards from "./pages/passenger/SavedCards";
-import PilotDashboard from "./pages/pilot/PilotDashboard";
-import ActiveRide from "./pages/pilot/ActiveRide";
-import RatePassenger from "./pages/pilot/RatePassenger";
-import PilotHistory from "./pages/pilot/PilotHistory";
-import PilotProfile from "./pages/pilot/PilotProfile";
-import PilotProfileEdit from "./pages/pilot/PilotProfileEdit";
-import Earnings from "./pages/pilot/Earnings";
-import PilotSettings from "./pages/pilot/PilotSettings";
-import PilotDocumentUpload from "./pages/pilot/PilotDocumentUpload";
 import TermsOfUse from "./pages/TermsOfUse";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -49,18 +27,61 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminPilotApproval from "./pages/admin/AdminPilotApproval";
 import AdminFinancial from "./pages/admin/AdminFinancial";
 import AdminAds from "./pages/admin/AdminAds";
+import AdminRides from "./pages/admin/AdminRides";
+
+// Lazy loads — passenger pages
+const PassengerHome = lazy(() => import("./pages/passenger/PassengerHome"));
+const RequestRide = lazy(() => import("./pages/passenger/RequestRide"));
+const SearchingPilot = lazy(() => import("./pages/passenger/SearchingPilot"));
+const Tracking = lazy(() => import("./pages/passenger/Tracking"));
+const InRide = lazy(() => import("./pages/passenger/InRide"));
+const Completed = lazy(() => import("./pages/passenger/Completed"));
+const RideHistory = lazy(() => import("./pages/passenger/RideHistory"));
+const Profile = lazy(() => import("./pages/passenger/Profile"));
+const Payment = lazy(() => import("./pages/passenger/Payment"));
+const WalletPage = lazy(() => import("./pages/passenger/Wallet"));
+const Favorites = lazy(() => import("./pages/passenger/Favorites"));
+const Settings = lazy(() => import("./pages/passenger/Settings"));
+const Referral = lazy(() => import("./pages/passenger/Referral"));
+const Help = lazy(() => import("./pages/passenger/Help"));
+const SavedCards = lazy(() => import("./pages/passenger/SavedCards"));
+
+// Lazy loads — pilot pages
+const PilotDashboard = lazy(() => import("./pages/pilot/PilotDashboard"));
+const ActiveRide = lazy(() => import("./pages/pilot/ActiveRide"));
+const RatePassenger = lazy(() => import("./pages/pilot/RatePassenger"));
+const PilotHistory = lazy(() => import("./pages/pilot/PilotHistory"));
+const PilotProfile = lazy(() => import("./pages/pilot/PilotProfile"));
+const PilotProfileEdit = lazy(() => import("./pages/pilot/PilotProfileEdit"));
+const Earnings = lazy(() => import("./pages/pilot/Earnings"));
+const PilotSettings = lazy(() => import("./pages/pilot/PilotSettings"));
+const PilotDocumentUpload = lazy(() => import("./pages/pilot/PilotDocumentUpload"));
 
 const queryClient = new QueryClient();
+
+// Routes where back button must NOT navigate away without confirmation (active ride/search)
+const PROTECTED_BACK_ROUTES = [
+  '/passenger/searching',
+  '/passenger/tracking',
+  '/passenger/in-ride',
+];
 
 // Handles Android hardware back button via Capacitor App plugin
 function AndroidBackHandler() {
   const navigate = useNavigate();
+  const [showBackConfirm, setShowBackConfirm] = useState(false);
+
   useEffect(() => {
     if (!isNativeMobile || platform !== 'android') return;
     let cleanup: (() => void) | undefined;
     import('@capacitor/app').then(({ App: CapApp }) => {
       const handler = CapApp.addListener('backButton', ({ canGoBack }) => {
-        if (canGoBack) {
+        const path = window.location.pathname;
+        const isProtected = PROTECTED_BACK_ROUTES.some(r => path.startsWith(r))
+          || path.startsWith('/pilot/ride/');
+        if (isProtected) {
+          setShowBackConfirm(true);
+        } else if (canGoBack) {
           navigate(-1);
         } else {
           CapApp.exitApp();
@@ -70,7 +91,27 @@ function AndroidBackHandler() {
     });
     return () => { cleanup?.(); };
   }, [navigate]);
-  return null;
+
+  if (!showBackConfirm) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-end justify-center p-4">
+      <div className="bg-card rounded-2xl p-5 w-full max-w-sm">
+        <p className="font-semibold text-foreground mb-1">Sair da corrida?</p>
+        <p className="text-sm text-muted-foreground mb-4">Você ainda tem uma corrida ativa. Sair dessa tela não cancela a corrida.</p>
+        <div className="flex gap-2">
+          <button
+            className="flex-1 py-2.5 rounded-xl bg-muted text-foreground text-sm font-medium"
+            onClick={() => setShowBackConfirm(false)}
+          >Ficar</button>
+          <button
+            className="flex-1 py-2.5 rounded-xl bg-destructive/10 text-destructive text-sm font-medium"
+            onClick={() => { setShowBackConfirm(false); navigate(-1); }}
+          >Sair mesmo assim</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const App = () => (
@@ -85,6 +126,7 @@ const App = () => (
               <ConnectionStatusBanner />
               <Toaster />
               <Sonner position="top-center" />
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
               <Routes>
                 <Route path="/" element={<Landing />} />
                 
@@ -226,12 +268,14 @@ const App = () => (
                   <Route index element={<AdminDashboard />} />
                   <Route path="users" element={<AdminUsers />} />
                   <Route path="pilots" element={<AdminPilotApproval />} />
+                  <Route path="rides" element={<AdminRides />} />
                   <Route path="financial" element={<AdminFinancial />} />
                   <Route path="ads" element={<AdminAds />} />
                 </Route>
 
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
             </BrowserRouter>
             </ErrorBoundary>
           </TooltipProvider>

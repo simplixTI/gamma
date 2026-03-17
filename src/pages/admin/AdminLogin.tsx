@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -7,20 +7,58 @@ import { Label } from '@/components/ui/label';
 import { Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 60;
+
 const AdminLogin = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState(0);
+
+  // Countdown timer when locked out
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const interval = setInterval(() => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setFailedAttempts(0);
+        setCountdown(0);
+        clearInterval(interval);
+      } else {
+        setCountdown(remaining);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
+
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
+    if (isLocked) return;
 
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) {
+        const next = failedAttempts + 1;
+        setFailedAttempts(next);
+        if (next >= MAX_ATTEMPTS) {
+          const until = Date.now() + LOCKOUT_SECONDS * 1000;
+          setLockedUntil(until);
+          setCountdown(LOCKOUT_SECONDS);
+          toast.error(`Muitas tentativas. Tente novamente em ${LOCKOUT_SECONDS} segundos.`);
+        } else {
+          toast.error(`Credenciais inválidas. ${MAX_ATTEMPTS - next} tentativa(s) restante(s).`);
+        }
+        return;
+      }
 
       // Verify admin role — must be an active admin or super_admin
       const { data: adminData, error: adminError } = await supabase
@@ -82,7 +120,12 @@ const AdminLogin = () => {
               required
             />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          {isLocked && (
+            <p className="text-sm text-destructive text-center">
+              Conta bloqueada. Tente novamente em {countdown}s.
+            </p>
+          )}
+          <Button type="submit" className="w-full" disabled={loading || isLocked}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Entrar
           </Button>

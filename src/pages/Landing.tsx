@@ -75,7 +75,7 @@ const Landing = () => {
         <p className="text-primary-foreground/60 text-sm">
           Ilha da Gigoia • Barra da Tijuca
         </p>
-        <p className="text-primary-foreground/30 text-[10px] mt-1">Desenvolvido por Simplix</p>
+        <p className="text-primary-foreground/30 text-[11px] mt-1">Desenvolvido por Simplix</p>
       </footer>
     </div>
   );

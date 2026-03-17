@@ -1,12 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 const MP_API = 'https://api.mercadopago.com';
 
+/**
+ * Verify Mercado Pago webhook signature.
+ * MP signs using: HMAC-SHA256( key=secret, message="id:{data.id};request-id:{x-request-id};ts:{ts};" )
+ * FIX [CRITICAL]: Original code used Stripe-style `{ts}.{rawBody}` — wrong for MP.
+ */
 async function verifyMpSignature(
   req: Request,
   rawBody: string,
@@ -16,13 +22,30 @@ async function verifyMpSignature(
   if (!xSignature) return false;
 
   const parts = Object.fromEntries(
-    xSignature.split(',').map((p) => p.trim().split('=')),
+    xSignature.split(',').map((p) => {
+      const idx = p.indexOf('=');
+      return idx === -1 ? [p.trim(), ''] : [p.slice(0, idx).trim(), p.slice(idx + 1).trim()];
+    }),
   );
   const ts = parts['ts'];
   const v1 = parts['v1'];
   if (!ts || !v1) return false;
 
-  const message = `${ts}.${rawBody}`;
+  // Parse data.id from the body for the MP signature scheme
+  let dataId = '';
+  try {
+    const parsed = JSON.parse(rawBody);
+    dataId = String(parsed?.data?.id || '');
+  } catch {
+    // ignore parse errors — will fail verification
+  }
+
+  // x-request-id header from MP
+  const requestId = req.headers.get('x-request-id') || '';
+
+  // MP canonical message format
+  const message = `id:${dataId};request-id:${requestId};ts:${ts};`;
+
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
   const msgData = encoder.encode(message);
@@ -75,8 +98,11 @@ Deno.serve(async (req) => {
 
     const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
     if (!valid) {
-      console.error('Invalid MP webhook signature');
-      return ok({ error: 'invalid_signature' });
+      console.error('Invalid MP webhook signature — ignoring');
+      return new Response(JSON.stringify({ received: true, valid: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const body = JSON.parse(rawBody);
@@ -105,7 +131,26 @@ Deno.serve(async (req) => {
     const mpPayment = await mpRes.json();
     console.log('MP wallet payment status:', mpPayment.status);
 
+    if (mpPayment.status === 'expired') {
+      await supabase
+        .from('wallet_transactions')
+        .update({ status: 'failed' })
+        .eq('mp_payment_id', String(mpPaymentId))
+        .eq('status', 'pending');
+      return ok({ success: false, reason: 'pix_expired' });
+    }
+
     if (mpPayment.status !== 'approved') {
+      // Mark the pending wallet transaction as failed so it doesn't create orphaned rows
+      if (mpPayment.status === 'rejected' || mpPayment.status === 'cancelled') {
+        if (mpPaymentId) {
+          await supabase
+            .from('wallet_transactions')
+            .update({ status: 'failed' })
+            .eq('mp_payment_id', String(mpPaymentId))
+            .eq('status', 'pending');
+        }
+      }
       return ok({ status: mpPayment.status });
     }
 
@@ -164,20 +209,27 @@ Deno.serve(async (req) => {
     });
 
     if (creditError) {
-      // Rollback so webhook can retry
       await supabase
         .from('wallet_transactions')
-        .update({ status: 'pending' })
+        .update({ status: 'failed' })
         .eq('id', tx.id);
-      console.error('Error crediting wallet:', creditError);
-      return ok({ error: 'credit_failed' });
+      console.error('Wallet credit failed, marked as failed:', creditError);
+      return ok({ error: 'credit_failed', txId: tx.id });
     }
+
+    await supabase
+      .from('wallet_transactions')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', tx.id);
 
     console.log('Wallet credited successfully');
     return ok({ success: true });
 
-  } catch (error: unknown) {
-    console.error('mp wallet-webhook error:', error);
-    return ok({ error: 'internal_error' });
+  } catch (err) {
+    console.error('[wallet-webhook] Unhandled error:', err);
+    return new Response(JSON.stringify({ error: 'internal_error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 });

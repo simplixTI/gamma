@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 
 interface PilotWithDocs {
   id: string;
+  user_id: string;
   full_name: string;
   email: string;
   phone: string;
@@ -64,7 +65,7 @@ const AdminPilotApproval = () => {
     setLoading(true);
     const { data } = await supabase
       .from('pilot_profiles')
-      .select(`id, full_name, email, phone, cpf, boat_type, boat_identification,
+      .select(`id, user_id, full_name, email, phone, cpf, boat_type, boat_identification,
         approval_status, submitted_at, approval_notes,
         pilot_documents(id, document_type, storage_path, status)`)
       .order('submitted_at', { ascending: true, nullsFirst: false });
@@ -114,6 +115,22 @@ const AdminPilotApproval = () => {
         status === 'approved' ? 'Piloto aprovado!' :
         status === 'rejected' ? 'Piloto reprovado' : 'Status atualizado'
       );
+
+      // Notify pilot via push notification (fire-and-forget — don't block UI)
+      const pilot = pilots.find(p => p.id === pilotId);
+      if (pilot?.user_id && (status === 'approved' || status === 'rejected')) {
+        const noteText = notes[pilotId] ?? pilot.approval_notes ?? '';
+        const pushTitle = status === 'approved' ? 'Conta aprovada! 🎉' : 'Documentação reprovada';
+        const pushBody = status === 'approved'
+          ? 'Sua conta foi aprovada. Você já pode receber corridas na Gamma!'
+          : noteText
+            ? `Reprovado: ${noteText}. Corrija e reenvie.`
+            : 'Sua documentação foi reprovada. Acesse o app para ver detalhes.';
+        void supabase.functions.invoke('send-push-notification', {
+          body: { userId: pilot.user_id, title: pushTitle, body: pushBody },
+        });
+      }
+
       await load();
       setExpanded(null);
     } catch (err) {

@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -62,12 +63,23 @@ Deno.serve(async (req) => {
     // DEPRECATED: This endpoint is dead code. Wallet webhook events are handled by mp-webhook.
     // wallet-topup sets notification_url to /functions/v1/mp-webhook, not this endpoint.
     console.warn('[mp-wallet-webhook] DEPRECATED endpoint called — should not be receiving events');
-    return ok({ error: 'deprecated_endpoint', use: 'mp-webhook' });
+    return new Response(JSON.stringify({ error: 'deprecated', message: 'This endpoint is deprecated. Use /mp-webhook instead.' }), {
+      status: 410,
+      headers: { 'Content-Type': 'application/json' },
+    });
 
     const rawBody = await req.text();
     console.log('MP mp-wallet-webhook received');
 
-    if (MP_WEBHOOK_SECRET) {
+    if (!MP_WEBHOOK_SECRET) {
+      console.error('MP_WEBHOOK_SECRET not configured — refusing webhook');
+      return new Response(JSON.stringify({ error: 'service_not_configured' }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    {
       const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
       if (!valid) {
         console.error('Invalid MP webhook signature');

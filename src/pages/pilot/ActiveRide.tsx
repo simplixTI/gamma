@@ -17,6 +17,7 @@ import GoogleMapView from '@/components/GoogleMapView';
 import RideChat from '@/components/RideChat';
 import RideTimeline, { TimelineStep } from '@/components/RideTimeline';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { DbRide, Ride } from '@/types';
 import { toast } from 'sonner';
 import { usePilotGPS } from '@/hooks/usePilotGPS';
@@ -50,8 +51,9 @@ const ActiveRide = () => {
   const [pilotProfileId, setPilotProfileId] = useState<string | undefined>(undefined);
   // pilotUserId = auth UUID, used for GPS tracking via usePilotGPS
   const [currentPilotId, setCurrentPilotId] = useState<string | undefined>(undefined);
-  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid'>('pending');
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid' | 'failed'>('pending');
   const [passengerPhone, setPassengerPhone] = useState<string | null>(null);
+  const { user } = useAuthContext();
   const { playSound } = useNotificationSound();
 
   const handleNewMessage = useCallback(() => {
@@ -72,7 +74,7 @@ const ActiveRide = () => {
     id: dbRide.id,
     passengerId: dbRide.passenger_device_id,
     passengerName: dbRide.passenger_name || 'Passageiro',
-    passengerPhoto: '/placeholder.svg',
+    passengerPhoto: '',
     pilotId: dbRide.pilot_id || undefined,
     origin: {
       id: 'origin',
@@ -84,7 +86,7 @@ const ActiveRide = () => {
       id: 'destination',
       name: dbRide.destination_name || 'Destino',
       address: dbRide.destination_address || '',
-      coordinates: [dbRide.destination_lng || 0, dbRide.destination_lat || 0], // [lng, lat] format
+      coordinates: [dbRide.destination_lng ?? 0, dbRide.destination_lat ?? 0], // [lng, lat] format
     },
     status: dbRide.status,
     price: Number(dbRide.price),
@@ -141,6 +143,8 @@ const ActiveRide = () => {
         // Check payment status
         if ((data as DbRide).payment_status === 'paid') {
           setPaymentStatus('paid');
+        } else if ((data as DbRide).payment_status === 'failed') {
+          setPaymentStatus('failed');
         }
       }
       setLoading(false);
@@ -165,6 +169,9 @@ const ActiveRide = () => {
             setPaymentStatus('paid');
             playSound();
             toast.success('Pagamento confirmado!');
+          } else if (updatedRide.payment_status === 'failed') {
+            setPaymentStatus('failed');
+            toast.error('Pagamento falhou. O passageiro precisa tentar novamente.');
           }
 
           // Phase sync — keep UI in step with DB status (e.g. passenger cancels)
@@ -273,8 +280,8 @@ const ActiveRide = () => {
   };
 
   const handleCancelRide = async () => {
-    // pilotProfileId (pilot_profiles.id) is required by cancel_ride_by_pilot RPC
-    if (!ride || !rideId || !pilotProfileId) {
+    // cancel_ride_by_pilot RPC validates auth.uid() === p_pilot_id, so pass user.id (auth UUID)
+    if (!ride || !rideId || !user?.id) {
       toast.error('Dados do piloto ainda carregando. Tente novamente.');
       return;
     }
@@ -282,10 +289,9 @@ const ActiveRide = () => {
     setIsCancelling(true);
 
     try {
-      // cancel_ride_by_pilot (migration 20260316000008) takes p_pilot_id = pilot_profiles.id
       const { data, error } = await supabase.rpc('cancel_ride_by_pilot', {
         p_ride_id: rideId,
-        p_pilot_id: pilotProfileId,
+        p_pilot_id: user.id,
       });
 
       if (error) {
@@ -448,13 +454,20 @@ const ActiveRide = () => {
             variant="secondary"
             size="icon"
             className="rounded-full"
-            onClick={() => { const d = passengerPhone?.replace(/\D/g, ''); if (d && d.length >= 10) window.open(`tel:+55${d}`); }}
+            onClick={() => { const d = passengerPhone?.replace(/\D/g, ''); if (d && d.length >= 10) window.location.href = `tel:+55${d}`; }}
             disabled={!passengerPhone}
             title={passengerPhone ? `Ligar para ${ride.passengerName}` : 'Telefone não disponível'}
           >
             <Phone className="w-5 h-5" />
           </Button>
         </div>
+
+        {paymentStatus === 'failed' && (
+          <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3 mb-3">
+            <p className="text-sm font-semibold text-destructive">⚠️ Pagamento falhou</p>
+            <p className="text-xs text-destructive/80">O passageiro precisa tentar novamente.</p>
+          </div>
+        )}
 
         {/* Route info */}
         <div className="bg-background rounded-xl p-4 mb-6">

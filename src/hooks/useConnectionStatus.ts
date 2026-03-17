@@ -58,14 +58,11 @@ export const useConnectionStatus = () => {
     };
   }, []);
 
-  // Auto-reconnect when coming back online
-  const reconnect = useCallback(async () => {
+  // Auto-reconnect when coming back online — reconnect the WebSocket transport
+  // WITHOUT removing existing channels (which would kill active ride subscriptions).
+  const reconnect = useCallback(() => {
     if (status.isOnline && !status.isRealtimeConnected) {
-      // Force reconnection by removing and re-adding channels
-      const channels = supabase.getChannels();
-      for (const channel of channels) {
-        await supabase.removeChannel(channel);
-      }
+      supabase.realtime.connect();
     }
   }, [status.isOnline, status.isRealtimeConnected]);
 

@@ -48,11 +48,13 @@ export const createRide = async ({
   return data;
 };
 
-export const cancelRide = async (rideId: string) => {
+export const cancelRide = async (rideId: string, userId: string) => {
   const { error } = await supabase
     .from('rides')
     .update({ status: 'cancelled' })
-    .eq('id', rideId);
+    .eq('id', rideId)
+    .eq('status', 'pending')
+    .or(`passenger_user_id.eq.${userId},passenger_device_id.eq.${userId}`);
 
   if (error) {
     throw error;

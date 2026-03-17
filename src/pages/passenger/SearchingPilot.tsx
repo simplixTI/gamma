@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { X, MapPin, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import GoogleMapView from '@/components/GoogleMapView';
@@ -14,16 +14,19 @@ import { DbRide } from '@/types';
 import { toast } from 'sonner';
 import RideAcceptedModal from '@/components/RideAcceptedModal';
 import RideStatusBanner from '@/components/RideStatusBanner';
+import AdDisplay from '@/components/AdDisplay';
 
 const SearchingPilot = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { origin, destination, setRideStatus, setCurrentPilot, calculatePrice } = useApp();
   const { user } = useAuthContext();
   const [searchTime, setSearchTime] = useState(0);
   const [currentRideId, setCurrentRideId] = useState<string | null>(null);
   const [showAcceptedModal, setShowAcceptedModal] = useState(false);
   const [acceptedPilot, setAcceptedPilot] = useState<{ name: string; rating: number; phone: string } | null>(null);
-  // Ref (not state) prevents stale closure in both realtime + polling callbacks
+  const [showCancelWarning, setShowCancelWarning] = useState(false);
+  // Ref (not state) prevents stale closure in both realtime + fallback callbacks
   const navigatedToTrackingRef = React.useRef(false);
   const { playSound } = useNotificationSound();
   const { notifyRideAccepted } = useNotifications();
@@ -39,22 +42,26 @@ const SearchingPilot = () => {
           if (ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') {
             // Already matched, go to tracking (pilot_id = pilot_profiles.id row UUID)
             let pilotRating = 4.9;
+            let pilotPhoto = '';
+            let pilotBoat = 'Barco';
             if (ride.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
-                .select('rating')
+                .select('rating, photo_url, boat_type')
                 .eq('id', ride.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
+              if (pp?.photo_url) pilotPhoto = pp.photo_url;
+              if (pp?.boat_type) pilotBoat = pp.boat_type;
             }
             if (navigatedToTrackingRef.current) return;
             navigatedToTrackingRef.current = true;
             setCurrentPilot({
               id: ride.pilot_id || 'pilot-1',
               name: ride.pilot_name || 'Capitão',
-              photo: '/placeholder.svg',
+              photo: pilotPhoto,
               rating: pilotRating,
-              boat: 'Lancha Rápida',
+              boat: pilotBoat,
               phone: ride.pilot_phone || '',
             });
             setRideStatus('matched');
@@ -90,23 +97,27 @@ const SearchingPilot = () => {
             playSound();
             notifyRideAccepted(updatedRide.pilot_name || 'Capitão');
 
-            // Fetch real pilot rating from DB (pilot_id = pilot_profiles.id row UUID)
+            // Fetch real pilot rating, photo and boat_type from DB
             let pilotRating = 4.9;
+            let pilotPhoto = '';
+            let pilotBoat = 'Barco';
             if (updatedRide.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
-                .select('rating')
+                .select('rating, photo_url, boat_type')
                 .eq('id', updatedRide.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
+              if (pp?.photo_url) pilotPhoto = pp.photo_url;
+              if (pp?.boat_type) pilotBoat = pp.boat_type;
             }
 
             const pilot = {
               id: updatedRide.pilot_id || 'pilot-1',
               name: updatedRide.pilot_name || 'Capitão',
-              photo: '/placeholder.svg',
+              photo: pilotPhoto,
               rating: pilotRating,
-              boat: 'Lancha Rápida',
+              boat: pilotBoat,
               phone: updatedRide.pilot_phone || '',
             };
 
@@ -133,7 +144,7 @@ const SearchingPilot = () => {
       )
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
-          console.warn('[SearchingPilot] Realtime channel error — polling will continue');
+          console.warn('[SearchingPilot] Realtime channel error — 30s fallback sync active');
         }
       });
 
@@ -142,61 +153,25 @@ const SearchingPilot = () => {
     };
   }, [currentRideId, navigate, setCurrentPilot, setRideStatus, playSound, notifyRideAccepted]);
 
-  // Polling como fallback para casos onde o realtime não funciona
+  // 30-second fallback sync (only if realtime fails)
   useEffect(() => {
     if (!currentRideId) return;
 
-    const poll = async () => {
-      try {
-        const { data: ride, error } = await supabase
-          .from('rides')
-          .select('id, status, pilot_id, pilot_name, pilot_phone')
-          .eq('id', currentRideId)
-          .single();
-
-        if (error || !ride) {
-          return;
-        }
-
-        if ((ride.status === 'accepted' || ride.status === 'pilot_arriving' || ride.status === 'in_progress') && !navigatedToTrackingRef.current) {
-          navigatedToTrackingRef.current = true;
-          let pilotRating = 4.9;
-          if (ride.pilot_id) {
-            const { data: pp } = await supabase
-              .from('pilot_profiles')
-              .select('rating')
-              .eq('id', ride.pilot_id)
-              .maybeSingle();
-            if (pp?.rating) pilotRating = pp.rating;
-          }
-          const pilot = {
-            id: ride.pilot_id || 'pilot-1',
-            name: ride.pilot_name || 'Capitão',
-            photo: '/placeholder.svg',
-            rating: pilotRating,
-            boat: 'Lancha Rápida',
-            phone: ride.pilot_phone || '',
-          };
-          setCurrentPilot(pilot);
-          setRideStatus('matched');
-          navigate('/passenger/tracking', { state: { rideId: ride.id } });
-        } else if (ride.status === 'cancelled' && !navigatedToTrackingRef.current) {
-          navigatedToTrackingRef.current = true;
-          toast.error('Corrida cancelada');
-          setRideStatus('idle');
-          navigate('/passenger');
-        }
-        // Se status === 'pending', continua aguardando
-      } catch (error) {
-        console.error('[SearchingPilot] Error polling ride:', error);
+    const fallbackInterval = setInterval(async () => {
+      if (!currentRideId) return;
+      const { data } = await supabase
+        .from('rides')
+        .select('status, pilot_id')
+        .eq('id', currentRideId)
+        .maybeSingle();
+      if (data?.status === 'accepted' && !navigatedToTrackingRef.current) {
+        navigatedToTrackingRef.current = true;
+        navigate('/passenger/tracking', { state: { rideId: currentRideId } });
       }
-    };
+    }, 30000);
 
-    // Poll a cada 3 segundos para resposta mais rápida
-    const interval = setInterval(poll, 3000);
-
-    return () => clearInterval(interval);
-  }, [currentRideId, navigate, setCurrentPilot, setRideStatus]);
+    return () => clearInterval(fallbackInterval);
+  }, [currentRideId, navigate]);
 
   // Increment search time and auto-cancel after 5 minutes
   useEffect(() => {
@@ -206,11 +181,18 @@ const SearchingPilot = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Show warning 15 seconds before auto-cancel
+  useEffect(() => {
+    if (searchTime === 285 && !navigatedToTrackingRef.current) {
+      setShowCancelWarning(true);
+    }
+  }, [searchTime]);
+
   // Trigger auto-cancel when timeout is reached
   useEffect(() => {
     if (searchTime >= 300 && currentRideId && !navigatedToTrackingRef.current) {
       navigatedToTrackingRef.current = true;
-      cancelRide(currentRideId)
+      cancelRide(currentRideId, user?.id ?? '')
         .then(() => {
           toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
         })
@@ -229,7 +211,7 @@ const SearchingPilot = () => {
     if (navigatedToTrackingRef.current) return;
     if (currentRideId) {
       try {
-        await cancelRide(currentRideId);
+        await cancelRide(currentRideId, user?.id ?? '');
       } catch (error) {
         console.error('Error cancelling ride:', error);
         toast.error('Erro ao cancelar. Tente novamente.');
@@ -250,7 +232,7 @@ const SearchingPilot = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const price = calculatePrice();
+  const price = (location.state as { confirmedPrice?: number } | null)?.confirmedPrice ?? calculatePrice();
 
   const handleCloseModal = () => {
     setShowAcceptedModal(false);
@@ -328,6 +310,30 @@ const SearchingPilot = () => {
             <Clock className="w-4 h-4" />
             <span>{formatTime(searchTime)}</span>
           </div>
+          {/* Always visible: time counter and auto-cancel info */}
+          <div className="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
+            <Clock className="w-3 h-3" />
+            <span>
+              {searchTime < 240
+                ? `Buscando há ${Math.floor(searchTime / 60)}:${String(searchTime % 60).padStart(2, '0')} — cancela automaticamente em ${Math.floor((300 - searchTime) / 60)}:${String((300 - searchTime) % 60).padStart(2, '0')}`
+                : `Cancelamento automático em ${300 - searchTime}s`
+              }
+            </span>
+          </div>
+
+          {/* Warning banner: 15s before auto-cancel */}
+          {showCancelWarning && !navigatedToTrackingRef.current && (
+            <div className="mt-4 bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3 flex items-center gap-3">
+              <span className="text-destructive text-lg">⚠️</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-destructive">Nenhum piloto encontrado</p>
+                <p className="text-xs text-destructive/80">A busca será cancelada automaticamente em {Math.max(0, 300 - searchTime)}s.</p>
+              </div>
+              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive shrink-0" onClick={handleCancel}>
+                Cancelar
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Bottom card */}
@@ -363,6 +369,8 @@ const SearchingPilot = () => {
               <div className="w-2 h-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
+
+          <AdDisplay position="searching" />
 
           <Button
             variant="ghost"

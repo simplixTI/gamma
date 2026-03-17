@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Copy, Check, Clock, QrCode, CreditCard, Loader2, Star, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { X, Copy, Check, Clock, QrCode, CreditCard, Loader2, Star, ChevronDown, ChevronUp, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -80,6 +80,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [pixData, setPixData] = useState<PixData | null>(null);
   const [copied, setCopied] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
+  const [pixError, setPixError] = useState<string | null>(null);
 
   const [card, setCard] = useState<CardState>({ number: '', name: '', expiry: '', cvv: '' });
   const [cardLoading, setCardLoading] = useState(false);
@@ -141,11 +142,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && rideId && tab === 'pix' && !pixData) {
+    if (isOpen && rideId && tab === 'pix') {
       createPixPayment();
     }
+    // pixData intentionally omitted — including it causes duplicate PIX creation
+    // when createPixPayment resets pixData to null before the API call completes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, rideId, tab, pixData]);
+  }, [isOpen, rideId, tab]);
 
   useEffect(() => {
     if (isOpen && tab === 'card') {
@@ -158,6 +161,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     pixCreationInProgressRef.current = true;
     setPixLoading(true);
     setPixData(null);
+    setPixError(null);
     try {
       const { data, error } = await supabase.functions.invoke('mp-create-payment', {
         body: {
@@ -182,7 +186,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       });
     } catch (err) {
       console.error('Error creating PIX payment:', err);
-      toast.error('Erro ao gerar pagamento PIX');
+      setPixError('Não foi possível gerar o código PIX. Tente novamente.');
     } finally {
       setPixLoading(false);
       pixCreationInProgressRef.current = false;
@@ -294,11 +298,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           onClose();
         }, 1500);
       } else if (data.status === 'in_process') {
-        toast.info('Pagamento em análise. Você receberá uma confirmação em breve.');
-        setTimeout(() => {
-          onPaymentComplete?.();
-          onClose();
-        }, 2000);
+        // Do NOT call onPaymentComplete — the card may still be declined.
+        // The webhook will set payment_status='paid' if/when approved.
+        toast.info('Pagamento em análise pelo banco. Aguarde a confirmação por e-mail.');
+        setCardResult({ success: false, message: 'Aguardando aprovação do banco...' });
       } else {
         const rejectionMessages: Record<string, string> = {
           cc_rejected_insufficient_amount: 'Saldo insuficiente no cartão.',
@@ -366,11 +369,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           onClose();
         }, 1500);
       } else if (data.status === 'in_process') {
-        toast.info('Pagamento em análise. Você receberá uma confirmação em breve.');
-        setTimeout(() => {
-          onPaymentComplete?.();
-          onClose();
-        }, 2000);
+        // Do NOT call onPaymentComplete — the card may still be declined.
+        toast.info('Pagamento em análise pelo banco. Aguarde a confirmação por e-mail.');
+        setCardResult({ success: false, message: 'Aguardando aprovação do banco...' });
       } else {
         const msg = 'Pagamento recusado. Verifique o CVV ou use outro cartão.';
         setCardResult({ success: false, message: msg });
@@ -446,6 +447,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
               ) : pixData ? (
                 <>
+                  {pixError && (
+                    <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 mb-4 flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">Erro ao gerar PIX</p>
+                        <p className="text-xs text-destructive/80 mt-1">{pixError}</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="bg-white rounded-2xl p-6 mb-4 flex flex-col items-center">
                     {pixData.qrCode ? (
                       <img
@@ -488,15 +498,27 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         'Já realizei o pagamento'
                       )}
                     </Button>
-                    <Button variant="ghost" fullWidth onClick={createPixPayment}>
+                    <Button variant="ghost" fullWidth onClick={createPixPayment} disabled={pixLoading}>
+                      {pixLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                       Gerar novo código
                     </Button>
                   </div>
                 </>
               ) : (
                 <div className="text-center py-10">
-                  <p className="text-destructive mb-4">Erro ao gerar pagamento</p>
-                  <Button variant="outline" onClick={createPixPayment}>Tentar novamente</Button>
+                  {pixError && (
+                    <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 mb-4 flex items-start gap-3 text-left">
+                      <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">Erro ao gerar PIX</p>
+                        <p className="text-xs text-destructive/80 mt-1">{pixError}</p>
+                      </div>
+                    </div>
+                  )}
+                  <Button variant="outline" onClick={() => { setPixError(null); createPixPayment(); }} disabled={pixLoading}>
+                    {pixLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Tentar novamente
+                  </Button>
                 </div>
               )}
             </>
@@ -556,10 +578,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         <div className="pt-2">
                           <label className="text-xs text-muted block mb-1">CVV do cartão selecionado</label>
                           <input
-                            type="text"
+                            type="password"
                             inputMode="numeric"
-                            placeholder="123"
+                            placeholder="•••"
                             maxLength={4}
+                            autoComplete="cc-csc"
                             value={savedCardCvv}
                             onChange={(e) => setSavedCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
                             className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -646,10 +669,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                         <div>
                           <label className="text-xs text-muted block mb-1">CVV</label>
                           <input
-                            type="text"
+                            type="password"
                             inputMode="numeric"
-                            placeholder="123"
+                            placeholder="•••"
                             maxLength={4}
+                            autoComplete="cc-csc"
                             value={card.cvv}
                             onChange={(e) => setCard((c) => ({ ...c, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
                             className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"

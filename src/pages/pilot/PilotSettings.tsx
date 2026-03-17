@@ -120,11 +120,11 @@ const PilotSettings = () => {
         <div className="pt-6 border-t border-border mt-6">
           <p className="text-sm text-muted text-center mb-2">Gamma Piloto v1.0.0</p>
           <p className="text-xs text-muted text-center">
-            © 2024 Gamma. Todos os direitos reservados.
+            © {new Date().getFullYear()} Gamma. Todos os direitos reservados.
           </p>
         </div>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

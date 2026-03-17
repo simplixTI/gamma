@@ -99,6 +99,19 @@ const RequestRide = () => {
       return;
     }
 
+    // Prevent multiple concurrent active rides per user
+    const { data: activeRide } = await supabase
+      .from('rides')
+      .select('id')
+      .eq('passenger_user_id', user.id)
+      .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
+      .maybeSingle();
+    if (activeRide) {
+      toast.error('Você já tem uma corrida em andamento. Finalize-a antes de solicitar outra.');
+      navigate('/passenger/searching');
+      return;
+    }
+
     setIsCreating(true);
     try {
       const { data: result, error: opError } = await safeDbOperation(async () => {
@@ -153,32 +166,22 @@ const RequestRide = () => {
   const handlePaymentComplete = async () => {
     if (!currentRideId) return;
 
-    try {
-      const { error } = await safeDbOperation(async () => {
-        const { error: updateError } = await supabase
-          .from('rides')
-          .update({ payment_status: 'paid' })
-          .eq('id', currentRideId);
-        if (updateError) throw updateError;
-      });
+    // payment_status is set to 'paid' by the Mercado Pago webhook server-side.
+    // Client-side update is intentionally omitted to prevent premature/incorrect status.
 
-      if (error) {
-        toast.error(String(error));
-        return;
-      }
-
-      // Consume the referral discount if it was applied
-      if (hasDiscount && activeDiscount) {
+    // Consume the referral discount if it was applied
+    if (hasDiscount && activeDiscount) {
+      try {
         await useDiscount(activeDiscount.id, currentRideId);
+      } catch (err) {
+        // Non-fatal — discount consumption failure should not block the ride
+        console.error('Failed to consume referral discount:', err);
       }
-
-      setShowPaymentModal(false);
-      toast.success('Pagamento confirmado! Buscando piloto...');
-      navigate('/passenger/searching');
-    } catch (error) {
-      console.error('Error updating payment status:', error);
-      toast.error(getFriendlyErrorMessage(error));
     }
+
+    setShowPaymentModal(false);
+    toast.success('Pagamento confirmado! Buscando piloto...');
+    navigate('/passenger/searching', { state: { confirmedPrice: totalPrice } });
   };
 
   const handlePaymentCancel = async () => {
@@ -217,6 +220,7 @@ const RequestRide = () => {
           size="icon"
           onClick={() => navigate('/passenger')}
           className="bg-card shadow-md rounded-full"
+          aria-label="Voltar"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -365,7 +369,7 @@ const RequestRide = () => {
                 <div className="flex items-center gap-2.5">
                   <button
                     onClick={() => setPassengerCount(Math.max(1, passengerCount - 1))}
-                    className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
+                    className="w-11 h-11 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm p-2"
                     disabled={passengerCount <= 1}
                   >
                     −
@@ -373,7 +377,7 @@ const RequestRide = () => {
                   <span className="w-4 text-center font-bold text-sm">{passengerCount}</span>
                   <button
                     onClick={() => setPassengerCount(Math.min(16, passengerCount + 1))}
-                    className="w-8 h-8 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm"
+                    className="w-11 h-11 rounded-full border border-border bg-card flex items-center justify-center font-bold text-foreground active:scale-90 transition-transform disabled:opacity-30 cursor-pointer text-sm p-2"
                     disabled={passengerCount >= 16}
                   >
                     +

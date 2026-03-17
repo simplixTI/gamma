@@ -26,6 +26,21 @@ export function usePushNotifications(userId?: string) {
       const result = await Push.requestPermissions();
       if (result.receive !== 'granted') return;
 
+      // Create notification channel for Android 13+
+      if ((window as any).Capacitor?.getPlatform() === 'android') {
+        await Push.createChannel({
+          id: 'gamma_rides',
+          name: 'Corridas',
+          description: 'Notificações de corridas em tempo real',
+          importance: 5, // IMPORTANCE_HIGH
+          visibility: 1, // VISIBILITY_PUBLIC
+          sound: 'default',
+          vibration: true,
+          lights: true,
+          lightColor: '#1B4FBF',
+        });
+      }
+
       // Register with APNs (iOS) or FCM (Android)
       await Push.register();
 
@@ -52,7 +67,7 @@ export function usePushNotifications(userId?: string) {
       const receiveListener = await Push.addListener(
         'pushNotificationReceived',
         (notification) => {
-          console.log('[PushNotifications] Foreground:', notification.title);
+          console.log('[PushNotifications] Foreground notification received');
         }
       );
 

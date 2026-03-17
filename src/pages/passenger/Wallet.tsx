@@ -203,7 +203,7 @@ const WalletPage = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={loadWallet}
+            onClick={() => loadWallet(true)}
             className="text-primary-foreground hover:bg-primary-foreground/10"
           >
             <RefreshCw className="w-5 h-5" />
@@ -339,9 +339,8 @@ const WalletPage = () => {
                   <div className="relative mb-6">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted font-medium">R$</span>
                     <input
-                      type="number"
-                      min="5"
-                      max="1000"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="Outro valor"
                       className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-3 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                       onChange={(e) => {
@@ -432,7 +431,7 @@ const WalletPage = () => {
           </div>
         </div>
       )}
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

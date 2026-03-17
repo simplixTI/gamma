@@ -36,6 +36,8 @@ interface PilotProfile {
   pix_key: string | null;
   boat_capacity: number;
   current_passengers: number;
+  approval_status?: 'pending' | 'under_review' | 'approved' | 'rejected';
+  submitted_at?: string | null;
 }
 
 export function useAuth() {
@@ -51,6 +53,13 @@ export function useAuth() {
   useEffect(() => {
     let initialSessionHandled = false;
 
+    // Safety timeout: if loading is still true after 8 seconds, force it off
+    // to prevent an infinite spinner caused by a Supabase network error or
+    // missing user_roles row.
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 8000);
+
     // FIRST check existing session synchronously, then subscribe
     supabase.auth.getSession().then(({ data: { session } }) => {
       initialSessionHandled = true;
@@ -59,6 +68,7 @@ export function useAuth() {
       if (session?.user && !fetchingRef.current) {
         fetchUserRole(session.user.id);
       } else if (!session?.user) {
+        clearTimeout(safetyTimer);
         setLoading(false);
       }
     });
@@ -83,7 +93,10 @@ export function useAuth() {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+    };
   }, []);
 
   const fetchUserRole = useCallback(async (userId: string) => {
@@ -122,11 +135,17 @@ export function useAuth() {
             if (Date.now() - parsed.ts > 10 * 60 * 1000) {
               sessionStorage.removeItem('pending_oauth_role');
             } else {
-              pendingRole = parsed.role as UserRole;
+              // Validate role value is a known valid role before using it
+              const rawRole = parsed.role;
+              if (rawRole === 'passenger' || rawRole === 'pilot') {
+                pendingRole = rawRole;
+              }
             }
           } catch {
-            // Fallback: value is a plain string (legacy format)
-            pendingRole = raw as UserRole;
+            // Legacy plain-string format — validate before accepting
+            if (raw === 'passenger' || raw === 'pilot') {
+              pendingRole = raw as UserRole;
+            }
           }
         }
         if (pendingRole) {

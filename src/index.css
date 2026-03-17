@@ -98,13 +98,25 @@
   html {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    scroll-behavior: smooth;
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.625;
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Eliminate 300ms tap delay on all interactive elements */
+  button, a, [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Ensure all buttons show pointer cursor */
+  button:not(:disabled), a, [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
   }
 
   /* Safe area insets for mobile */
@@ -136,7 +148,7 @@
 
 
   .glass {
-    @apply bg-card/90 backdrop-blur-lg;
+    @apply bg-card/90 backdrop-blur-lg border border-border/50;
   }
 
   .text-gradient {
@@ -272,5 +284,27 @@
   }
   .min-h-screen {
     min-height: 100dvh;
+  }
+}
+
+/* Accessibility: respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-slide-up,
+  .animate-fade-in,
+  .animate-scale-in,
+  .animate-spin,
+  .animate-pulse,
+  .boat-float,
+  .pulse-marker {
+    animation: none !important;
   }
 }

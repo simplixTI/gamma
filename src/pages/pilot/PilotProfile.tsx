@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, Mail, Ship, CreditCard, Camera, Save, Check, Star, X, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Phone, Mail, Ship, CreditCard, Camera, Save, Check, Star, X, Loader2, Plus, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -112,6 +112,11 @@ const PilotProfile = () => {
       return;
     }
 
+    if (!formData.pix_key.trim()) {
+      toast.error('Chave PIX é obrigatória para receber seus ganhos');
+      // Don't block save, but show warning — pilot can still save without it
+    }
+
     setSaving(true);
     try {
       await updatePilotProfile({
@@ -124,7 +129,7 @@ const PilotProfile = () => {
         pix_key: formData.pix_key,
       });
       toast.success('Perfil atualizado!');
-      navigate('/pilot');
+      navigate(-1);
     } catch (error) {
       console.error('Error saving profile:', error);
       toast.error('Erro ao salvar perfil');
@@ -350,16 +355,24 @@ const PilotProfile = () => {
           </h2>
           
           <div className="space-y-2">
-            <Label htmlFor="pix_key">Chave PIX</Label>
+            <Label htmlFor="pix_key">Chave PIX *</Label>
             <Input
               id="pix_key"
               value={formData.pix_key}
               onChange={(e) => setFormData({ ...formData, pix_key: e.target.value })}
               placeholder="CPF, E-mail, Telefone ou Chave Aleatória"
             />
-            <p className="text-xs text-muted-foreground">
-              Seus ganhos serão enviados para esta chave PIX
-            </p>
+            {!formData.pix_key && (
+              <p className="text-xs text-warning flex items-center gap-1 mt-1">
+                <AlertCircle className="w-3 h-3" />
+                Sem chave PIX você não poderá receber seus ganhos
+              </p>
+            )}
+            {formData.pix_key && (
+              <p className="text-xs text-muted-foreground">
+                Seus ganhos serão enviados para esta chave PIX
+              </p>
+            )}
           </div>
         </div>
 
@@ -384,7 +397,7 @@ const PilotProfile = () => {
           )}
         </Button>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

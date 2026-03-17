@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { getDeviceId } from '@/hooks/useRideSubscription';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface Message {
   id: string;
@@ -97,11 +98,15 @@ const RideChat = ({ rideId, userType, isOpen, onClose, onNewMessage }: RideChatP
         message: newMessage.trim(),
       });
 
-      if (!error) {
+      if (error) {
+        console.error('Error sending message:', error);
+        toast.error('Não foi possível enviar a mensagem. Tente novamente.');
+      } else {
         setNewMessage('');
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      toast.error('Não foi possível enviar a mensagem. Tente novamente.');
     } finally {
       setIsSending(false);
     }

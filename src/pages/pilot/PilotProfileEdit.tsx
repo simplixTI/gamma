@@ -4,6 +4,7 @@ import { ArrowLeft, User, Phone, Ship, CreditCard, Camera, Save, Check } from 'l
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePilotStats } from '@/hooks/usePilotStats';
@@ -19,11 +20,22 @@ interface PilotProfile {
   boat_capacity: number;
   license_number: string;
   pix_key: string;
+  pix_key_type: string;
+  bank_name: string;
+  bank_account: string;
+  bank_agency: string;
   rating: number;
   total_rides: number;
   total_earnings: number;
   is_verified: boolean;
 }
+
+const PIX_KEY_TYPES = [
+  { value: 'cpf', label: 'CPF' },
+  { value: 'email', label: 'E-mail' },
+  { value: 'phone', label: 'Celular' },
+  { value: 'random', label: 'Chave aleatória' },
+] as const;
 
 const PilotProfileEdit = () => {
   const navigate = useNavigate();
@@ -38,7 +50,12 @@ const PilotProfileEdit = () => {
     boat_capacity: 8,
     license_number: '',
     pix_key: '',
+    pix_key_type: '',
+    bank_name: '',
+    bank_account: '',
+    bank_agency: '',
   });
+  const [savingPayout, setSavingPayout] = useState(false);
   const [isNewProfile, setIsNewProfile] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +133,10 @@ const PilotProfileEdit = () => {
         boat_capacity: profile.boat_capacity,
         license_number: profile.license_number,
         pix_key: profile.pix_key,
+        pix_key_type: profile.pix_key_type || null,
+        bank_name: profile.bank_name || null,
+        bank_account: profile.bank_account || null,
+        bank_agency: profile.bank_agency || null,
       };
 
       const { error } = isNewProfile
@@ -130,6 +151,34 @@ const PilotProfileEdit = () => {
       toast.error('Erro ao salvar perfil');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePayout = async () => {
+    if (!pilotId) {
+      toast.error('Erro: Piloto não encontrado');
+      return;
+    }
+    setSavingPayout(true);
+    try {
+      const { error } = await supabase
+        .from('pilots')
+        .update({
+          pix_key: profile.pix_key || null,
+          pix_key_type: profile.pix_key_type || null,
+          bank_name: profile.bank_name || null,
+          bank_account: profile.bank_account || null,
+          bank_agency: profile.bank_agency || null,
+          payout_info_updated_at: new Date().toISOString(),
+        })
+        .eq('id', pilotId);
+      if (error) throw error;
+      toast.success('Dados de pagamento salvos!');
+    } catch (error) {
+      console.error('Error saving payout info:', error);
+      toast.error('Erro ao salvar dados de pagamento');
+    } finally {
+      setSavingPayout(false);
     }
   };
 
@@ -267,21 +316,64 @@ const PilotProfileEdit = () => {
         <div className="bg-card rounded-xl p-4 shadow-sm space-y-4">
           <h2 className="font-semibold text-foreground flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-primary" />
-            Dados de Pagamento
+            Dados para pagamento (Pix)
           </h2>
-          
+
+          <div className="space-y-2">
+            <Label htmlFor="pix_key_type">Tipo da chave Pix</Label>
+            <Select
+              value={profile.pix_key_type || ''}
+              onValueChange={(v) => setProfile({ ...profile, pix_key_type: v })}
+            >
+              <SelectTrigger id="pix_key_type">
+                <SelectValue placeholder="Selecione o tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {PIX_KEY_TYPES.map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="pix">Chave PIX</Label>
             <Input
               id="pix"
               value={profile.pix_key || ''}
               onChange={(e) => setProfile({ ...profile, pix_key: e.target.value })}
-              placeholder="CPF, E-mail, Telefone ou Chave Aleatória"
+              placeholder={
+                profile.pix_key_type === 'cpf' ? '000.000.000-00' :
+                profile.pix_key_type === 'email' ? 'seu@email.com' :
+                profile.pix_key_type === 'phone' ? '(21) 99999-9999' :
+                profile.pix_key_type === 'random' ? 'Chave aleatória' :
+                'CPF, E-mail, Celular ou Chave Aleatória'
+              }
             />
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               Seus ganhos serão enviados para esta chave PIX
             </p>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSavePayout}
+            disabled={savingPayout}
+            className="w-full"
+          >
+            {savingPayout ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                Salvando...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Save className="w-3.5 h-3.5" />
+                Salvar dados de pagamento
+              </span>
+            )}
+          </Button>
         </div>
 
         {/* Stats (if not new) */}
@@ -330,7 +422,7 @@ const PilotProfileEdit = () => {
           )}
         </Button>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

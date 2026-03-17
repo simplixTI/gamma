@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Pencil, Trash2, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, ToggleLeft, ToggleRight, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,22 @@ const AdminAds = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const { data, error } = await supabase.storage.from('ad-images').upload(`${Date.now()}-${file.name}`, file, { upsert: true });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from('ad-images').getPublicUrl(data.path);
+      setForm(p => ({ ...p, image_url: urlData.publicUrl }));
+    } catch {
+      toast.error('Erro ao fazer upload da imagem');
+    } finally {
+      setImageUploading(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -138,8 +154,36 @@ const AdminAds = () => {
               <Textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Texto do anúncio..." rows={2} className="resize-none" />
             </div>
             <div>
-              <Label>URL da imagem</Label>
+              <Label>Imagem do Banner</Label>
               <Input value={form.image_url} onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))} placeholder="https://..." />
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">ou fazer upload:</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={imageUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="gap-1.5"
+                >
+                  {imageUploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4" />
+                  )}
+                  {imageUploading ? 'Enviando...' : 'Escolher arquivo'}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); }}
+                />
+              </div>
+              {form.image_url && (
+                <img src={form.image_url} alt="Preview" className="mt-2 w-full h-24 object-cover rounded-lg" />
+              )}
             </div>
             <div>
               <Label>Link de destino</Label>
@@ -158,11 +202,11 @@ const AdminAds = () => {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Início</Label>
+                <Label>Início <span className="text-muted-foreground font-normal">(vazio = sempre)</span></Label>
                 <Input type="date" value={form.starts_at} onChange={e => setForm(p => ({ ...p, starts_at: e.target.value }))} />
               </div>
               <div>
-                <Label>Fim</Label>
+                <Label>Fim <span className="text-muted-foreground font-normal">(vazio = sempre)</span></Label>
                 <Input type="date" value={form.ends_at} onChange={e => setForm(p => ({ ...p, ends_at: e.target.value }))} />
               </div>
             </div>
@@ -200,6 +244,11 @@ const AdminAds = () => {
                   </span>
                 </div>
                 {ad.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{ad.description}</p>}
+                <p className="text-xs text-muted-foreground/70 mt-0.5">
+                  {ad.starts_at || ad.ends_at
+                    ? `${ad.starts_at ? new Date(ad.starts_at).toLocaleDateString('pt-BR') : '∞'} → ${ad.ends_at ? new Date(ad.ends_at).toLocaleDateString('pt-BR') : '∞'}`
+                    : 'Sem prazo (sempre ativo)'}
+                </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <Button variant="ghost" size="sm" onClick={() => toggleActive(ad)} title={ad.is_active ? 'Desativar' : 'Ativar'}>

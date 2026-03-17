@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Users, UserCheck, DollarSign, Ship, Clock, TrendingUp } from 'lucide-react';
+import { Users, UserCheck, DollarSign, Ship, Clock, TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface Stats {
   totalPassengers: number;
@@ -28,9 +29,12 @@ const StatCard = ({
 const AdminDashboard = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const [passengers, pilots, pendingPilots, rides, revenue, recentRides] = await Promise.all([
         supabase.from('passenger_profiles').select('id', { count: 'exact', head: true }),
         supabase.from('pilot_profiles').select('id', { count: 'exact', head: true }),
@@ -44,6 +48,15 @@ const AdminDashboard = () => {
           .gte('completed_at', new Date(Date.now() - 7 * 86400000).toISOString()),
       ]);
 
+      const hasError = [passengers, pilots, pendingPilots, rides, revenue, recentRides]
+        .some((r) => r.error);
+
+      if (hasError) {
+        setError('Erro ao carregar estatísticas. Tente novamente.');
+        setLoading(false);
+        return;
+      }
+
       const totalRevenue = (revenue.data ?? []).reduce((s, r) => s + Number(r.amount), 0);
 
       setStats({
@@ -54,10 +67,16 @@ const AdminDashboard = () => {
         totalRevenue,
         ridesLast7Days: recentRides.count ?? 0,
       });
+    } catch {
+      setError('Erro ao carregar estatísticas. Tente novamente.');
+    } finally {
       setLoading(false);
-    };
-    load();
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -76,6 +95,17 @@ const AdminDashboard = () => {
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground">Visão geral da plataforma</p>
       </div>
+
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+          <p className="flex-1 font-medium text-foreground">{error}</p>
+          <Button size="sm" variant="outline" onClick={load} className="gap-1.5 shrink-0">
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard icon={Users} label="Passageiros cadastrados" value={stats?.totalPassengers ?? 0} />

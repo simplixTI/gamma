@@ -29,10 +29,11 @@ export const usePilotStats = () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const [allResult, todayResult] = await Promise.all([
+      const [countResult, todayResult] = await Promise.all([
+        // Count total rides efficiently — no need to fetch all rows
         supabase
           .from('rides')
-          .select('id, price, tip, completed_at')
+          .select('id', { count: 'exact', head: true })
           .eq('pilot_id', currentPilotId)
           .eq('status', 'completed')
           .eq('payment_status', 'paid'),
@@ -45,11 +46,10 @@ export const usePilotStats = () => {
           .gte('completed_at', today.toISOString()),
       ]);
 
-      const allRides = allResult.data ?? [];
       const todayRides = todayResult.data ?? [];
 
       const ridesToday = todayRides.length;
-      const totalRides = allRides.length;
+      const totalRides = countResult.count ?? 0;
       const todayEarnings = todayRides.reduce((sum, r) => sum + Number(r.price || 0), 0);
       const todayTips = todayRides.reduce((sum, r) => sum + Number(r.tip || 0), 0);
 

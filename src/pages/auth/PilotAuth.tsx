@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, Mail, CreditCard, Eye, EyeOff, Camera, Ship, Anchor, ImagePlus } from 'lucide-react';
+import { ArrowLeft, User, Phone, Mail, CreditCard, Eye, EyeOff, Camera, Ship, Anchor, ImagePlus, FileText, Upload, CheckCircle2 } from 'lucide-react';
 import SimplixFooter from '@/components/SimplixFooter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -31,24 +30,25 @@ const signInSchema = z.object({
 
 const PilotAuth = () => {
   const navigate = useNavigate();
-  const { signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithPhone, verifyOtp, uploadPhoto, loading, user, role } = useAuthContext();
+  const { signUpWithEmail, signInWithEmail, signInWithGoogle, uploadPhoto, loading, user, role } = useAuthContext();
 
-  // Redirect if already logged in
+  // Redirect once auth + role are fully resolved
   useEffect(() => {
-    if (user && role) {
+    if (!loading && user && role) {
       navigate(role === 'pilot' ? '/pilot' : '/passenger', { replace: true });
     }
-  }, [user, role, navigate]);
+  }, [loading, user, role, navigate]);
   
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
-  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [boatPhotos, setBoatPhotos] = useState<File[]>([]);
   const [boatPhotoPreviews, setBoatPhotoPreviews] = useState<string[]>([]);
+
+  // Documents — one file per document type
+  const [docFiles, setDocFiles] = useState<Partial<Record<string, File>>>({});
   
   // Terms and Privacy
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -64,7 +64,6 @@ const PilotAuth = () => {
   const [password, setPassword] = useState('');
   const [boatType, setBoatType] = useState('');
   const [boatIdentification, setBoatIdentification] = useState('');
-  const [otp, setOtp] = useState('');
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,6 +97,16 @@ const PilotAuth = () => {
   const removeBoatPhoto = (index: number) => {
     setBoatPhotos(boatPhotos.filter((_, i) => i !== index));
     setBoatPhotoPreviews(boatPhotoPreviews.filter((_, i) => i !== index));
+  };
+
+  const handleDocChange = (docType: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 10 MB por documento.');
+      return;
+    }
+    setDocFiles((prev) => ({ ...prev, [docType]: file }));
   };
 
   const handleSignUp = async () => {
@@ -149,6 +158,44 @@ const PilotAuth = () => {
         }
       }
 
+      // Upload pilot documents to pilot-documents bucket
+      const docEntries = Object.entries(docFiles);
+      if (docEntries.length > 0 && data?.user?.id) {
+        const { supabase: sb } = await import('@/integrations/supabase/client');
+        // Get pilot_profiles.id for this user
+        const { data: pp } = await sb.from('pilot_profiles').select('id').eq('user_id', data.user.id).single();
+        if (pp?.id) {
+          for (const [docType, file] of docEntries) {
+            try {
+              const ext = file.name.split('.').pop() ?? 'bin';
+              const storagePath = `${data.user.id}/${docType}.${ext}`;
+              const { data: uploadData, error: uploadErr } = await sb.storage
+                .from('pilot-documents')
+                .upload(storagePath, file, { contentType: file.type, upsert: true });
+              if (uploadErr) { console.warn(`Doc upload failed (${docType}):`, uploadErr); continue; }
+              await sb.from('pilot_documents').upsert({
+                pilot_id: pp.id,
+                user_id: data.user.id,
+                document_type: docType,
+                storage_path: uploadData.path,
+                file_name: file.name,
+                mime_type: file.type,
+                file_size_bytes: file.size,
+              }, { onConflict: 'pilot_id,document_type' });
+            } catch (docErr) { console.warn(`Doc insert failed (${docType}):`, docErr); }
+          }
+          // Mark as under_review if all required docs are present
+          const REQUIRED = ['rg_front', 'rg_back', 'carta_nautica', 'boat_registration', 'proof_of_residence', 'selfie'];
+          const hasAll = REQUIRED.every((t) => docFiles[t]);
+          if (hasAll) {
+            await sb.from('pilot_profiles').update({
+              approval_status: 'under_review',
+              submitted_at: new Date().toISOString(),
+            }).eq('id', pp.id);
+          }
+        }
+      }
+
       toast.success('Conta criada! Verifique seu email para confirmar.');
       setMode('login');
     } catch (error: any) {
@@ -174,7 +221,7 @@ const PilotAuth = () => {
       setIsSubmitting(true);
       await signInWithEmail(email, password);
       toast.success('Login realizado!');
-      navigate('/pilot');
+      // Navigation handled by useEffect once role resolves — do NOT navigate() here.
     } catch (error: any) {
       console.error('SignIn error:', error);
       if (error.message?.includes('Invalid login credentials')) {
@@ -184,7 +231,6 @@ const PilotAuth = () => {
       } else {
         toast.error(error.message || 'Erro ao fazer login');
       }
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -206,50 +252,12 @@ const PilotAuth = () => {
       if (error) throw error;
 
       setResetEmailSent(true);
-      toast.success('Email de recuperação enviado!');
+      toast.success('Email de recuperação enviado! Verifique sua caixa de entrada e a pasta de spam.', {
+        duration: 8000,
+      });
     } catch (error: any) {
       console.error('Reset password error:', error);
       toast.error(error.message || 'Erro ao enviar email de recuperação');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handlePhoneLogin = async () => {
-    try {
-      if (!phone || phone.replace(/\D/g, '').length < 10) {
-        toast.error('Telefone inválido');
-        return;
-      }
-
-      setIsSubmitting(true);
-      const formattedPhone = '+55' + phone.replace(/\D/g, '');
-      await signInWithPhone(formattedPhone);
-      setOtpSent(true);
-      toast.success('Código enviado por SMS');
-    } catch (error: any) {
-      console.error('Phone login error:', error);
-      toast.error(error.message || 'Erro ao enviar SMS');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    try {
-      if (!otp || otp.length < 6) {
-        toast.error('Código inválido');
-        return;
-      }
-
-      setIsSubmitting(true);
-      const formattedPhone = '+55' + phone.replace(/\D/g, '');
-      await verifyOtp(formattedPhone, otp);
-      toast.success('Login realizado!');
-      navigate('/pilot');
-    } catch (error: any) {
-      console.error('OTP verification error:', error);
-      toast.error(error.message || 'Código inválido');
     } finally {
       setIsSubmitting(false);
     }
@@ -268,8 +276,8 @@ const PilotAuth = () => {
       {/* Header */}
       <header className="sticky top-0 bg-background/95 backdrop-blur z-10 border-b border-border safe-area-top">
         <div className="flex items-center gap-3 p-4">
-          <Button variant="ghost" size="icon" onClick={() => mode === 'forgot' ? setMode('login') : navigate('/')}>
-            <ArrowLeft className="w-5 h-5" />
+          <Button variant="ghost" size="icon" aria-label="Voltar" onClick={() => mode === 'forgot' ? setMode('login') : navigate('/')}>
+            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
           </Button>
           <h1 className="text-lg font-semibold">
             {mode === 'login' ? 'Entrar como Piloto' : mode === 'register' ? 'Cadastro de Piloto' : 'Recuperar Senha'}
@@ -367,156 +375,87 @@ const PilotAuth = () => {
             </div>
 
             {mode === 'login' ? (
-              <>
-                {/* Auth Method Tabs */}
-                <Tabs value={authMethod} onValueChange={(v) => setAuthMethod(v as 'email' | 'phone')}>
-                  <TabsList className="grid w-full grid-cols-2 mb-6">
-                    <TabsTrigger value="email">Email</TabsTrigger>
-                    <TabsTrigger value="phone">Telefone</TabsTrigger>
-                  </TabsList>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
 
-                  <TabsContent value="email" className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="seu@email.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Senha</Label>
-                      <div className="relative">
-                        <Input
-                          id="password"
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder="••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2"
-                        >
-                          {showPassword ? (
-                            <EyeOff className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <Eye className="w-4 h-4 text-muted-foreground" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
                     <button
                       type="button"
-                      onClick={() => setMode('forgot')}
-                      className="text-sm text-primary hover:underline"
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded"
                     >
-                      Esqueci minha senha
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      ) : (
+                        <Eye className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      )}
                     </button>
+                  </div>
+                </div>
 
-                    <Button
-                      className="w-full"
-                      onClick={handleSignIn}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? 'Entrando...' : 'Entrar'}
-                    </Button>
+                <button
+                  type="button"
+                  onClick={() => setMode('forgot')}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
 
-                    <div className="relative my-2">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t border-border" />
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-background px-2 text-muted-foreground">ou</span>
-                      </div>
-                    </div>
+                <Button
+                  className="w-full"
+                  onClick={handleSignIn}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Entrando...' : 'Entrar'}
+                </Button>
 
-                    <Button
-                      variant="outline"
-                      className="w-full gap-2"
-                      onClick={() => signInWithGoogle('pilot')}
-                      disabled={isSubmitting}
-                    >
-                      <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                      </svg>
-                      Continuar com Google
-                    </Button>
-                  </TabsContent>
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">ou</span>
+                  </div>
+                </div>
 
-                  <TabsContent value="phone" className="space-y-4">
-                    {!otpSent ? (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="phone">Telefone</Label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                            <Input
-                              id="phone"
-                              type="tel"
-                              placeholder="(21) 99999-9999"
-                              value={phone}
-                              onChange={(e) => setPhone(formatPhone(e.target.value))}
-                              className="pl-10"
-                            />
-                          </div>
-                        </div>
-
-                        <Button
-                          className="w-full"
-                          onClick={handlePhoneLogin}
-                          disabled={isSubmitting}
-                        >
-                          {isSubmitting ? 'Enviando...' : 'Receber código SMS'}
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="otp">Código SMS</Label>
-                          <Input
-                            id="otp"
-                            type="text"
-                            placeholder="000000"
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                            className="text-center text-2xl tracking-widest"
-                            maxLength={6}
-                          />
-                        </div>
-
-                        <Button
-                          className="w-full"
-                          onClick={handleVerifyOtp}
-                          disabled={isSubmitting}
-                        >
-                          {isSubmitting ? 'Verificando...' : 'Verificar'}
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          className="w-full"
-                          onClick={() => setOtpSent(false)}
-                        >
-                          Voltar
-                        </Button>
-                      </>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={() => signInWithGoogle('pilot')}
+                  disabled={isSubmitting}
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Continuar com Google
+                </Button>
+              </div>
             ) : (
               /* Registration Form */
               <div className="space-y-4">
@@ -677,6 +616,57 @@ const PilotAuth = () => {
                   </div>
                 </div>
 
+                {/* Documents Section */}
+                <div className="pt-4 border-t border-border">
+                  <h3 className="font-semibold mb-1 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    Documentos para Aprovação
+                  </h3>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Envie os documentos abaixo para análise do administrador. Formatos aceitos: JPG, PNG, PDF (máx. 10 MB).
+                  </p>
+
+                  <div className="space-y-3">
+                    {([
+                      { key: 'rg_front', label: 'RG — Frente *', required: true },
+                      { key: 'rg_back', label: 'RG — Verso *', required: true },
+                      { key: 'cnh', label: 'CNH (opcional)', required: false },
+                      { key: 'proof_of_residence', label: 'Comprovante de Residência *', required: true },
+                      { key: 'selfie', label: 'Selfie com documento *', required: true },
+                      { key: 'carta_nautica', label: 'Carta Náutica / Habilitação Náutica *', required: true },
+                      { key: 'boat_registration', label: 'Documentação do Barco (PROA) *', required: true },
+                    ] as { key: string; label: string; required: boolean }[]).map(({ key, label }) => (
+                      <div key={key} className="flex items-center gap-3">
+                        <label className="flex-1 flex items-center gap-3 p-3 rounded-xl border border-border bg-background cursor-pointer hover:border-primary transition-colors">
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => handleDocChange(key, e)}
+                            className="hidden"
+                          />
+                          {docFiles[key] ? (
+                            <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
+                          ) : (
+                            <Upload className="w-5 h-5 text-muted-foreground shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{label}</p>
+                            {docFiles[key] ? (
+                              <p className="text-xs text-success truncate">{(docFiles[key] as File).name}</p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Toque para selecionar</p>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground mt-3">
+                    * Obrigatório para aprovação. Você pode continuar sem enviar agora e enviar depois pelo perfil.
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="registerPassword">Senha</Label>
                   <div className="relative">
@@ -689,13 +679,14 @@ const PilotAuth = () => {
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded"
                     >
                       {showPassword ? (
-                        <EyeOff className="w-4 h-4 text-muted-foreground" />
+                        <EyeOff className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       ) : (
-                        <Eye className="w-4 h-4 text-muted-foreground" />
+                        <Eye className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       )}
                     </button>
                   </div>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { UserRole, RideStatus, Location, Pilot } from '@/types';
 import { locations } from '@/data/mockData';
 import { PRICE_TABLE, DEFAULT_PRICE, DISTANCE_TABLE, TIME_TABLE } from '@/data/pricingData';
@@ -32,7 +32,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [origin, setOrigin] = useState<Location | null>(null);
   const [destination, setDestination] = useState<Location | null>(null);
   const [currentPilot, setCurrentPilot] = useState<Pilot | null>(null);
-  const [isPilotOnline, setIsPilotOnline] = useState(false);
+  const [isPilotOnline, setIsPilotOnlineState] = useState(() => {
+    try { return localStorage.getItem('gamma_pilot_online') === '1'; } catch { return false; }
+  });
+  const setIsPilotOnline = (online: boolean) => {
+    try { localStorage.setItem('gamma_pilot_online', online ? '1' : '0'); } catch {}
+    setIsPilotOnlineState(online);
+  };
   const [passengerCount, setPassengerCount] = useState(1);
 
   // Clear ride state when user logs out or changes to prevent stale data
@@ -71,28 +77,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return PRICE_TABLE[origin.id]?.[destination.id] ?? DEFAULT_PRICE;
   };
 
+  const contextValue = useMemo(() => ({
+    userRole,
+    setUserRole,
+    rideStatus,
+    setRideStatus,
+    origin,
+    setOrigin,
+    destination,
+    setDestination,
+    currentPilot,
+    setCurrentPilot,
+    isPilotOnline,
+    setIsPilotOnline,
+    passengerCount,
+    setPassengerCount,
+    calculatePrice,
+    calculateDistance,
+    calculateTime,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [userRole, rideStatus, origin, destination, currentPilot, isPilotOnline, passengerCount]);
+
   return (
-    <AppContext.Provider
-      value={{
-        userRole,
-        setUserRole,
-        rideStatus,
-        setRideStatus,
-        origin,
-        setOrigin,
-        destination,
-        setDestination,
-        currentPilot,
-        setCurrentPilot,
-        isPilotOnline,
-        setIsPilotOnline,
-        passengerCount,
-        setPassengerCount,
-        calculatePrice,
-        calculateDistance,
-        calculateTime,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -81,14 +81,18 @@ const RatePassenger = () => {
     );
   }
 
-  // Se passenger_user_id for null (corrida legada), pular avaliação silenciosamente
-  if (!passengerUserId) {
-    navigate('/pilot');
-    return null;
-  }
+  // Se passenger_user_id for null (corrida legada), pular avaliação via useEffect
+  // para não chamar navigate() durante a fase de render
+  useEffect(() => {
+    if (!loadingRide && !passengerUserId) {
+      navigate('/pilot', { replace: true });
+    }
+  }, [loadingRide, passengerUserId, navigate]);
+
+  if (!loadingRide && !passengerUserId) return null;
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-background flex items-center justify-center p-3 safe-area-inset">
+    <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col items-center justify-center p-3 safe-area-inset">
       <div className="w-full max-w-sm bg-card rounded-2xl shadow-elevated p-5 animate-scale-in">
         {/* Success icon */}
         <div className="flex justify-center mb-5">
@@ -154,7 +158,7 @@ const RatePassenger = () => {
           </Button>
         </div>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

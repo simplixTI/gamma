@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
+// NOTE: Set ALLOWED_ORIGIN env var in Supabase secrets for production
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -55,10 +57,10 @@ Deno.serve(async (req) => {
     // userId is always taken from the authenticated session — never from the request body
     const userId = user.id;
 
-    if (!amount || Number(amount) < 5) {
+    if (!amount || Number(amount) < 5 || Number(amount) > 5000) {
       return new Response(JSON.stringify({
         success: false,
-        error: 'amount (min R$5) is required',
+        error: 'amount must be between R$5 and R$5000',
       }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 

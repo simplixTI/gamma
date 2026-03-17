@@ -191,7 +191,7 @@ const Settings = () => {
           </AlertDialog>
         </div>
       </div>
-          <SimplixFooter />
+      <SimplixFooter />
     </div>
   );
 };

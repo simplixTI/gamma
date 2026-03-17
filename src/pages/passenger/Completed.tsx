@@ -11,6 +11,7 @@ import { DbRide } from '@/types';
 import StarRating from '@/components/StarRating';
 import PaymentModal from '@/components/PaymentModal';
 import SimplixFooter from '@/components/SimplixFooter';
+import AdDisplay from '@/components/AdDisplay';
 import { useReferral } from '@/hooks/useReferral';
 
 const tipOptions = [2, 5, 10];
@@ -133,37 +134,42 @@ const Completed = () => {
   const handlePayWithWallet = async () => {
     if (payingWithWalletRef.current) return;
     if (!rideId || !user?.id || !rideData) return;
-    const price = Number(rideData.price);
-    if (walletBalance !== null && walletBalance < price) {
-      toast.error(`Saldo insuficiente. Você precisa de R$ ${(price - walletBalance).toFixed(2).replace('.', ',')} a mais.`);
-      return;
-    }
+    // Set lock immediately — before any early returns so retry is always possible via finally
     payingWithWalletRef.current = true;
     setPayingWithWallet(true);
+    // Prevent concurrent PIX modal from opening while wallet payment is in-flight
+    setShowPaymentModal(false);
+    const price = Number(rideData.price);
     try {
-      const { error } = await supabase.rpc('debit_wallet', {
+      const { data: result, error } = await supabase.rpc('pay_ride_with_wallet', {
         p_user_id: user.id,
-        p_amount: Number(rideData.price),
-        p_description: `Corrida: ${rideData.origin_name} → ${rideData.destination_name || 'Destino'}`,
         p_ride_id: rideId,
+        p_amount: Number(rideData.price),
+        p_description: `Corrida de ${rideData.origin_name || 'origem'} para ${rideData.destination_name || 'destino'}`,
       });
+
       if (error) throw error;
 
-      // Mark ride as paid
-      await supabase
-        .from('rides')
-        .update({ payment_status: 'paid' })
-        .eq('id', rideId);
+      if (!result?.success) {
+        if (result?.error === 'insufficient_balance') {
+          toast.error(`Saldo insuficiente. Você tem R$ ${result.balance?.toFixed(2).replace('.', ',')} mas a corrida custa R$ ${Number(rideData.price).toFixed(2).replace('.', ',')}.`);
+        } else if (result?.error === 'already_paid') {
+          toast.info('Esta corrida já foi paga.');
+          setIsPaid(true);
+        } else {
+          throw new Error(result?.error || 'Falha no pagamento');
+        }
+        return;
+      }
 
       setIsPaid(true);
-      // Reflect new balance immediately so the UI doesn't show stale amount
-      setWalletBalance((prev) => (prev !== null ? Math.max(0, prev - Number(rideData.price)) : null));
-      toast.success('Pago com Gamma Cash!');
+      toast.success('Pagamento realizado com sucesso!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao pagar';
       toast.error(msg);
     } finally {
       setPayingWithWallet(false);
+      payingWithWalletRef.current = false;
     }
   };
 
@@ -177,13 +183,13 @@ const Completed = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPaid, user?.id]);
 
-  // Trigger confetti when 5 stars AND tip is selected
+  // Trigger confetti when 5 stars are given
   useEffect(() => {
-    if (rating === 5 && selectedTip && !confettiTriggered) {
+    if (rating === 5 && !confettiTriggered) {
       triggerConfetti();
       setConfettiTriggered(true);
     }
-  }, [rating, selectedTip, confettiTriggered]);
+  }, [rating, confettiTriggered]);
 
   const resetState = () => {
     setRideStatus('idle');
@@ -218,8 +224,8 @@ const Completed = () => {
           });
         if (error) throw error;
 
-        // Gravar tip na corrida (campo existente, mantém compatibilidade)
-        if (selectedTip) {
+        // Gravar tip na corrida somente se o pagamento foi confirmado
+        if (isPaid && selectedTip) {
           await supabase
             .from('rides')
             .update({ tip: selectedTip })
@@ -391,8 +397,8 @@ const Completed = () => {
           className="w-full bg-background border border-border rounded-xl p-2.5 resize-none h-16 mb-4 focus:outline-none focus:ring-2 focus:ring-secondary/50 text-sm"
         />
 
-        {/* Tip */}
-        <div className="mb-5">
+        {/* Tip — only after payment confirmed */}
+        {isPaid && <div className="mb-5">
           <p className="text-center text-foreground font-medium text-sm mb-2">
             Dar gorjeta ao piloto
           </p>
@@ -416,7 +422,7 @@ const Completed = () => {
               Obrigado! O piloto ficará muito feliz
             </p>
           )}
-        </div>
+        </div>}
 
         {/* Low rating confirmation inline banner */}
         {confirmLowRating && (
@@ -473,6 +479,7 @@ const Completed = () => {
             Pular
           </Button>
         </div>
+        <AdDisplay position="completed" />
         <SimplixFooter />
       </div>
     </div>

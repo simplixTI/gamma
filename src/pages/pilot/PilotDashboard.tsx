@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Menu, Star, Ship, History, Users, Clock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,15 +32,21 @@ const PilotDashboard = () => {
   // Pool: all active rides currently on the boat
   const [activeRides, setActiveRides] = useState<DbRide[]>([]);
   const [currentPassengers, setCurrentPassengers] = useState(0);
-  const [showNotificationBanner, setShowNotificationBanner] = useState(
-    () => localStorage.getItem('gamma_notif_banner_dismissed') !== '1'
-  );
+  const [showNotificationBanner, setShowNotificationBanner] = useState(() => {
+    try { return localStorage.getItem('gamma_notif_banner_dismissed') !== '1'; } catch { return true; }
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [missingFields, setMissingFields] = useState<string[]>([]);
+  const activeRidesRef = useRef<typeof activeRides>([]);
   const { permission, requestPermission, notifyNewRideRequest } = useNotifications();
   const { playNewRideSound } = useNotificationSound();
+  // Stable refs so the realtime channel effect never re-subscribes due to these callbacks updating
+  const playNewRideSoundRef = useRef(playNewRideSound);
+  const notifyNewRideRequestRef = useRef(notifyNewRideRequest);
+  useEffect(() => { playNewRideSoundRef.current = playNewRideSound; }, [playNewRideSound]);
+  useEffect(() => { notifyNewRideRequestRef.current = notifyNewRideRequest; }, [notifyNewRideRequest]);
   const { stats, loading: statsLoading, pilotId } = usePilotStats();
 
   usePushNotifications(user?.id);
@@ -55,19 +61,23 @@ const PilotDashboard = () => {
     id: dbRide.id,
     passengerId: dbRide.passenger_device_id,
     passengerName: dbRide.passenger_name || 'Passageiro',
-    passengerPhoto: '/placeholder.svg',
+    passengerPhoto: '',
     pilotId: dbRide.pilot_id || undefined,
     origin: {
       id: dbRide.origin_pier_id || 'origin',
       name: dbRide.origin_name,
       address: dbRide.origin_address || '',
-      coordinates: [dbRide.origin_lng, dbRide.origin_lat],
+      coordinates: (dbRide.origin_lng != null && dbRide.origin_lat != null)
+        ? [dbRide.origin_lng, dbRide.origin_lat]
+        : [0, 0],
     },
     destination: {
       id: dbRide.destination_pier_id || 'destination',
       name: dbRide.destination_name || 'Destino',
       address: dbRide.destination_address || '',
-      coordinates: [dbRide.destination_lng || 0, dbRide.destination_lat || 0],
+      coordinates: (dbRide.destination_lng != null && dbRide.destination_lat != null)
+        ? [dbRide.destination_lng, dbRide.destination_lat]
+        : [0, 0],
     },
     status: dbRide.status,
     price: dbRide.price,
@@ -121,6 +131,10 @@ const PilotDashboard = () => {
   }, [pilotId]);
 
   useEffect(() => {
+    activeRidesRef.current = activeRides;
+  }, [activeRides]);
+
+  useEffect(() => {
     if (!pilotId) return;
     fetchActiveRides();
   }, [pilotId, fetchActiveRides]);
@@ -141,8 +155,8 @@ const PilotDashboard = () => {
         (payload) => {
           const newRide = dbRideToRide(payload.new as DbRide);
           setRides((prev) => [newRide, ...prev]);
-          playNewRideSound();
-          notifyNewRideRequest(newRide.passengerName, newRide.origin.name, newRide.price);
+          playNewRideSoundRef.current();
+          notifyNewRideRequestRef.current(newRide.passengerName, newRide.origin.name, newRide.price);
         }
       )
       .on(
@@ -163,7 +177,7 @@ const PilotDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isPilotOnline, fetchPendingRides, dbRideToRide, playNewRideSound, notifyNewRideRequest, pilotId, fetchActiveRides]);
+  }, [isPilotOnline, fetchPendingRides, dbRideToRide, pilotId, fetchActiveRides]);
 
   useEffect(() => {
     if (isPilotOnline && permission === 'default') {
@@ -175,12 +189,12 @@ const PilotDashboard = () => {
   // (prevents going offline while navigating to an active ride)
   useEffect(() => {
     return () => {
-      if (activeRides.length === 0) {
+      if (activeRidesRef.current.length === 0) {
         setIsPilotOnline(false);
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRides.length]);
+  }, []);
 
   const drawerStats = useMemo(() => ({
     ridestoday: stats.ridesToday,
@@ -260,13 +274,16 @@ const PilotDashboard = () => {
             size="icon"
             onClick={() => setDrawerOpen(true)}
             className="text-primary-foreground hover:bg-primary-foreground/10"
+            aria-label="Abrir menu"
           >
             <Menu className="w-5 h-5" />
           </Button>
 
           <button
             onClick={() => setIsPilotOnline(!isPilotOnline)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${
+            aria-label={isPilotOnline ? 'Ficar offline' : 'Ficar online'}
+            aria-pressed={isPilotOnline}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors cursor-pointer active:scale-95 ${
               isPilotOnline ? 'bg-success text-success-foreground' : 'bg-primary-foreground/20'
             }`}
           >
@@ -279,6 +296,7 @@ const PilotDashboard = () => {
             size="icon"
             onClick={() => navigate('/pilot/history')}
             className="text-primary-foreground hover:bg-primary-foreground/10"
+            aria-label="Ver histórico"
           >
             <History className="w-5 h-5" />
           </Button>
@@ -319,23 +337,23 @@ const PilotDashboard = () => {
       </header>
 
       {/* Approval status banner */}
-      {pilotProfile && (pilotProfile as any).approval_status !== 'approved' && (
+      {pilotProfile && pilotProfile.approval_status !== 'approved' && (
         <div
           className={`px-4 py-3 flex items-center gap-3 cursor-pointer
-            ${ (pilotProfile as any).approval_status === 'under_review'
+            ${ pilotProfile.approval_status === 'under_review'
                 ? 'bg-blue-500/10 border-b border-blue-500/20'
                 : 'bg-orange-500/10 border-b border-orange-500/20'}`}
           onClick={() => navigate('/pilot/documents')}
         >
-          { (pilotProfile as any).approval_status === 'under_review'
+          { pilotProfile.approval_status === 'under_review'
             ? <Clock className="w-5 h-5 text-blue-500 shrink-0" />
             : <FileText className="w-5 h-5 text-orange-500 shrink-0" />
           }
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${ (pilotProfile as any).approval_status === 'under_review' ? 'text-blue-600' : 'text-orange-600'}`}>
-              { (pilotProfile as any).approval_status === 'under_review'
+            <p className={`text-sm font-semibold ${ pilotProfile.approval_status === 'under_review' ? 'text-blue-600' : 'text-orange-600'}`}>
+              { pilotProfile.approval_status === 'under_review'
                   ? 'Documentos em análise (até 24h)'
-                  : (pilotProfile as any).approval_status === 'rejected'
+                  : pilotProfile.approval_status === 'rejected'
                     ? 'Cadastro reprovado — verifique os documentos'
                     : 'Complete seu cadastro enviando os documentos'}
             </p>

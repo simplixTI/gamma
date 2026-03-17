@@ -31,7 +31,14 @@ const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
   // prevents the brief window where user is set but role is still loading (null).
   if (requiredRole) {
     if (role === null) {
-      // Role not yet loaded — keep showing the spinner until it resolves
+      if (!loading) {
+        // Auth finished but no role found — user has no profile yet, send to auth
+        const authPath = location.pathname.startsWith('/pilot')
+          ? '/auth/pilot'
+          : '/auth/passenger';
+        return <Navigate to={authPath} state={{ from: location }} replace />;
+      }
+      // Role still loading — show spinner
       return (
         <div className="min-h-screen bg-background flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
