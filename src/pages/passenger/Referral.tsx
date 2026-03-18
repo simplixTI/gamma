@@ -36,7 +36,7 @@ const Referral = () => {
   };
 
   const referralLink = referralCode
-    ? `${window.location.origin}/auth/passenger?ref=${referralCode}`
+    ? `${(import.meta.env.VITE_APP_URL as string | undefined) ?? window.location.origin}/auth/passenger?ref=${referralCode}`
     : null;
 
   const handleShare = async () => {

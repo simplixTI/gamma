@@ -220,7 +220,8 @@ export function useAuth() {
       boatIdentification?: string;
     }
   ) => {
-    const redirectUrl = `${window.location.origin}/`;
+    const appUrl = (import.meta.env.VITE_APP_URL as string | undefined) ?? window.location.origin;
+    const redirectUrl = `${appUrl}/`;
     
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -311,7 +312,7 @@ export function useAuth() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${(import.meta.env.VITE_APP_URL as string | undefined) ?? window.location.origin}/auth/callback`,
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });

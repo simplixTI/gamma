@@ -246,7 +246,7 @@ const PilotAuth = () => {
       
       const { supabase } = await import('@/integrations/supabase/client');
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/pilot?mode=reset`,
+        redirectTo: `${(import.meta.env.VITE_APP_URL as string | undefined) ?? window.location.origin}/auth/pilot?mode=reset`,
       });
 
       if (error) throw error;
