@@ -1,1 +1,7 @@
 project_id = "yrhdcigbbahylzfzbsnk"
+
+[functions.mp-webhook]
+verify_jwt = false
+
+[functions.wallet-webhook]
+verify_jwt = false
