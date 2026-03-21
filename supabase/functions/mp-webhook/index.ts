@@ -272,7 +272,11 @@ Deno.serve(async (req) => {
 
     if (!MP_WEBHOOK_SECRET) {
       console.error('MP_WEBHOOK_SECRET not configured — rejecting all webhook calls');
-      return ok({ error: 'webhook_not_configured' });
+      // Return 500 (not 200) so Mercado Pago retries instead of silently dropping
+      return new Response(JSON.stringify({ error: 'webhook_not_configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);

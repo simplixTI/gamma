@@ -210,6 +210,12 @@ Deno.serve(async (req: Request) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      if (parsed.title.length > 100 || parsed.body.length > 500) {
+        return new Response(
+          JSON.stringify({ error: 'title must be ≤100 chars and body ≤500 chars' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       // Enforce: authenticated users can only push to themselves
       if (callerUserId && parsed.userId !== callerUserId) {

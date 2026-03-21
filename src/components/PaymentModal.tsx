@@ -280,7 +280,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           passengerDeviceId,
           pilotId,
           saveCard,
-          userId: user?.id,
         },
       });
 

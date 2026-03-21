@@ -20,14 +20,15 @@ import AuthCallback from "./pages/auth/AuthCallback";
 import TermsOfUse from "./pages/TermsOfUse";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
-import AdminLogin from "./pages/admin/AdminLogin";
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminUsers from "./pages/admin/AdminUsers";
-import AdminPilotApproval from "./pages/admin/AdminPilotApproval";
-import AdminFinancial from "./pages/admin/AdminFinancial";
-import AdminAds from "./pages/admin/AdminAds";
-import AdminRides from "./pages/admin/AdminRides";
+// Lazy loads — admin pages (never needed by passengers/pilots)
+const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminPilotApproval = lazy(() => import("./pages/admin/AdminPilotApproval"));
+const AdminFinancial = lazy(() => import("./pages/admin/AdminFinancial"));
+const AdminAds = lazy(() => import("./pages/admin/AdminAds"));
+const AdminRides = lazy(() => import("./pages/admin/AdminRides"));
 
 // Lazy loads — passenger pages
 const PassengerHome = lazy(() => import("./pages/passenger/PassengerHome"));

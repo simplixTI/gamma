@@ -59,6 +59,16 @@ export async function initMobilePlugins() {
         console.warn('[Capacitor] Supabase realtime reconnect failed:', err);
       }
     });
+
+    // Handle OAuth deep links (Google sign-in callback on native)
+    // When Supabase redirects back to gamma.app.br/auth/callback, Capacitor
+    // intercepts the URL here. We pass the full URL to the WebView so
+    // supabase-js can parse the access_token/code from the hash/query params.
+    CapApp.addListener('appUrlOpen', async ({ url }) => {
+      if (url.includes('access_token') || url.includes('code=') || url.includes('/auth/callback')) {
+        window.location.href = url;
+      }
+    });
   } catch {
     // @capacitor/app may not be installed
   }

@@ -271,6 +271,7 @@ const ActiveRide = () => {
       setPhase(newPhase);
 
       if (newPhase === 'completed') {
+        toast.success('Corrida finalizada com sucesso!');
         navigatedAwayRef.current = true;
         navigate(`/pilot/rate/${rideId}`);
       }
@@ -438,11 +439,19 @@ const ActiveRide = () => {
 
         {/* Passenger info */}
         <div className="flex items-center gap-4 mb-4">
-          <img
-            src={ride.passengerPhoto}
-            alt={ride.passengerName}
-            className="w-14 h-14 rounded-full object-cover ring-2 ring-secondary"
-          />
+          {ride.passengerPhoto ? (
+            <img
+              src={ride.passengerPhoto}
+              alt={ride.passengerName}
+              className="w-14 h-14 rounded-full object-cover ring-2 ring-secondary"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-full ring-2 ring-secondary bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-xl font-bold text-primary">
+                {ride.passengerName?.[0]?.toUpperCase() ?? '?'}
+              </span>
+            </div>
+          )}
           <div className="flex-1">
             <p className="font-semibold text-lg text-foreground">{ride.passengerName}</p>
             <div className="flex items-center gap-1 text-muted">
