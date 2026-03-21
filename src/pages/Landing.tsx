@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Ship, MapPin, Navigation, CreditCard, Shield, Clock, Users, Anchor, Zap, ChevronDown } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -18,6 +17,11 @@ const Landing = () => {
     }
   }, [user, role, loading, navigate]);
 
+  const scrollTo = (id: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#000000' }}>
@@ -29,220 +33,272 @@ const Landing = () => {
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#000000', color: '#ffffff' }}>
 
-      {/* ───────────────── HERO ───────────────── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20 pb-32 overflow-hidden">
+      {/* ───── KEYFRAMES ───── */}
+      <style>{`
+        @keyframes linePulse {
+          from { opacity: 0.3; }
+          to   { opacity: 1; }
+        }
+        @keyframes beamSlide {
+          from { transform: translateX(-12px); opacity: 0.4; }
+          to   { transform: translateX(12px);  opacity: 1; }
+        }
+        @keyframes beamRise {
+          from { transform: translateY(10px); opacity: 0.4; }
+          to   { transform: translateY(-10px); opacity: 1; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(22px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes borderGlow {
+          from { box-shadow: 0 0 0px 0px rgba(34,211,238,0); border-color: rgba(255,255,255,0.07); }
+          to   { box-shadow: 0 0 18px 2px rgba(34,211,238,0.10); border-color: rgba(34,211,238,0.22); }
+        }
+        @keyframes textGlow {
+          from { text-shadow: 0 0 0px rgba(34,211,238,0); }
+          to   { text-shadow: 0 0 12px rgba(34,211,238,0.55); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .orb-anim, .fade-in-up { animation: none !important; }
+        }
+      `}</style>
 
-        {/* Orb decorativo 1 */}
-        <div
-          aria-hidden="true"
-          className="absolute rounded-full blur-3xl pointer-events-none"
-          style={{
-            width: '600px',
-            height: '600px',
-            top: '-100px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'radial-gradient(circle, rgba(34,211,238,0.18) 0%, transparent 70%)',
-          }}
-        />
-        {/* Orb decorativo 2 */}
-        <div
-          aria-hidden="true"
-          className="absolute rounded-full blur-2xl pointer-events-none"
-          style={{
-            width: '300px',
-            height: '300px',
-            top: '20%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'radial-gradient(circle, rgba(34,211,238,0.08) 0%, transparent 70%)',
-          }}
-        />
+      {/* ───── NAVBAR ───── */}
+      <header
+        className="sticky top-0 z-50"
+        style={{
+          backgroundColor: 'rgba(0,0,0,0.70)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 sm:px-10 py-4">
 
-        <div className="relative z-10 flex flex-col items-center max-w-4xl mx-auto w-full">
+          {/* Left — Logo */}
+          <Logo size="sm" variant="white" />
 
-          {/* Logo */}
-          <div className="mb-12">
-            <Logo size="lg" variant="white" showSubtitle />
-          </div>
+          {/* Center — nav links (desktop only) */}
+          <nav className="hidden md:flex items-center gap-8" aria-label="Navegação principal">
+            {[
+              { label: 'Como funciona', id: 'como-funciona' },
+              { label: 'Área de atendimento', id: 'area' },
+              { label: 'Para pilotos', id: 'para-pilotos' },
+            ].map(({ label, id }) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                onClick={scrollTo(id)}
+                className="cursor-pointer transition-colors duration-200"
+                style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.50)' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.50)')}
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
 
-          {/* Badge pill */}
-          <div
-            className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-8 text-sm"
+          {/* Right — CTA */}
+          <button
+            onClick={() => navigate('/auth/passenger')}
+            className="cursor-pointer transition-all duration-200"
             style={{
-              backgroundColor: 'rgba(34,211,238,0.10)',
-              border: '1px solid rgba(34,211,238,0.20)',
-              color: '#22d3ee',
+              fontSize: '0.875rem',
+              color: 'rgba(255,255,255,0.70)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '9999px',
+              padding: '0.375rem 1rem',
+              backgroundColor: 'transparent',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.color = '#ffffff';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.30)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.70)';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.15)';
             }}
           >
-            <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
-            Transporte aquático na Ilha da Gigoia
-          </div>
+            Entrar
+          </button>
+        </div>
+      </header>
 
-          {/* Título hero */}
-          <h1
-            className="font-black tracking-tight"
-            style={{ fontSize: 'clamp(2.5rem, 8vw, 5.5rem)', lineHeight: 1.05 }}
-          >
-            <span style={{ color: '#ffffff' }}>O jeito mais fácil de</span>
-            <br />
-            <span style={{ color: '#22d3ee' }}>atravessar a Ilha</span>
-          </h1>
+      {/* ───── HERO ───── */}
+      <section
+        className="min-h-screen flex flex-col items-center justify-center text-center px-6 py-32"
+        style={{ backgroundColor: '#000000' }}
+      >
+        {/* Beam vertical — esquerda hero */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '12%', top: '8%', width: '1px', height: '280px', background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.45) 50%, transparent 100%)', pointerEvents: 'none', animation: 'beamRise 6s ease-in-out infinite alternate' }} />
 
-          {/* Subtítulo */}
-          <p
-            className="mt-6 mb-12 max-w-2xl mx-auto leading-relaxed"
-            style={{ fontSize: 'clamp(1rem, 2.5vw, 1.25rem)', color: 'rgba(255,255,255,0.6)' }}
-          >
-            Transporte aquático por pool. Rápido, seguro e compartilhado.
-          </p>
+        {/* Beam horizontal — inferior direito hero */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', right: '6%', bottom: '14%', width: '280px', height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.35) 50%, transparent 100%)', pointerEvents: 'none', animation: 'beamSlide 7s ease-in-out infinite alternate' }} />
 
-          {/* Botões */}
-          <div className="flex flex-wrap gap-4 justify-center">
-            <button
-              onClick={() => navigate('/auth/passenger')}
-              className="inline-flex items-center gap-2 font-semibold cursor-pointer transition-all duration-200"
-              style={{
-                backgroundColor: '#22d3ee',
-                color: '#000000',
-                padding: '1rem 2rem',
-                borderRadius: '9999px',
-                fontSize: '1rem',
-                boxShadow: '0 0 30px rgba(34,211,238,0.30)',
-                border: 'none',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#67e8f9')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#22d3ee')}
-              aria-label="Entrar como Passageiro"
-            >
-              <User className="w-5 h-5" aria-hidden="true" />
-              Sou Passageiro
-            </button>
-
-            <button
-              onClick={() => navigate('/auth/pilot')}
-              className="inline-flex items-center gap-2 font-semibold cursor-pointer transition-all duration-200 backdrop-blur-sm"
-              style={{
-                backgroundColor: 'rgba(255,255,255,0.10)',
-                color: '#ffffff',
-                padding: '1rem 2rem',
-                borderRadius: '9999px',
-                fontSize: '1rem',
-                border: '1px solid rgba(255,255,255,0.20)',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.20)')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.10)')}
-              aria-label="Entrar como Piloto"
-            >
-              <Ship className="w-5 h-5" aria-hidden="true" />
-              Sou Piloto
-            </button>
-          </div>
+        {/* Logo com glow neon */}
+        <div className="relative mb-16 flex items-center justify-center">
+          {/* Bar horizontal atrás da logo */}
+          <div
+            aria-hidden="true"
+            className="orb-anim absolute pointer-events-none"
+            style={{
+              width: '520px',
+              height: '56px',
+              filter: 'blur(28px)',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.22) 30%, rgba(34,211,238,0.26) 50%, rgba(34,211,238,0.22) 70%, transparent 100%)',
+              animation: 'linePulse 4s ease-in-out infinite alternate',
+            }}
+          />
+          <Logo size="lg" variant="white" showSubtitle />
         </div>
 
-        {/* Scroll indicator */}
-        <a
-          href="#como-funciona"
-          aria-label="Ver como funciona"
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 cursor-pointer transition-colors duration-200"
-          style={{ color: 'rgba(255,255,255,0.30)' }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#22d3ee')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.30)')}
+        {/* Headline */}
+        <h1
+          className="fade-in-up font-semibold tracking-tight text-white"
+          style={{ fontSize: 'clamp(2.5rem,5vw,4.2rem)', lineHeight: 1.1, animation: 'fadeInUp 0.7s ease-out 0.1s both' }}
         >
-          <ChevronDown className="w-6 h-6 animate-bounce" />
-        </a>
+          Transporte aquático inteligente<br />
+          para a Ilha da Gigoia.
+        </h1>
+
+        {/* Subheadline */}
+        <p
+          className="fade-in-up font-light mt-6 max-w-xl mx-auto leading-relaxed"
+          style={{ fontSize: '1.125rem', color: 'rgba(255,255,255,0.50)', animation: 'fadeInUp 0.7s ease-out 0.25s both' }}
+        >
+          Pool de barcos nos principais trapiches. Rápido, seguro e verificado.
+        </p>
+
+        {/* Botões */}
+        <div className="fade-in-up flex flex-wrap gap-3 justify-center mt-10" style={{ animation: 'fadeInUp 0.7s ease-out 0.4s both' }}>
+          <button
+            onClick={() => navigate('/auth/passenger')}
+            className="cursor-pointer transition-all duration-200 font-medium"
+            style={{
+              fontSize: '0.875rem',
+              backgroundColor: '#ffffff',
+              color: '#000000',
+              padding: '0.625rem 1.5rem',
+              borderRadius: '9999px',
+              border: 'none',
+            }}
+            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.90)')}
+            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ffffff')}
+          >
+            Sou Passageiro
+          </button>
+
+          <button
+            onClick={() => navigate('/auth/pilot')}
+            className="cursor-pointer transition-all duration-200"
+            style={{
+              fontSize: '0.875rem',
+              color: 'rgba(255,255,255,0.60)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              padding: '0.625rem 1.5rem',
+              borderRadius: '9999px',
+              backgroundColor: 'transparent',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.color = '#ffffff';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.30)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.60)';
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.15)';
+            }}
+          >
+            Sou Piloto
+          </button>
+        </div>
+
+        {/* Dado de contexto */}
+        <p
+          className="fade-in-up mt-8 tracking-wide uppercase"
+          style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', animation: 'fadeInUp 0.7s ease-out 0.55s both' }}
+        >
+          24 trapiches &middot; Ilha da Gigoia &middot; Barra da Tijuca, RJ
+        </p>
       </section>
 
-      {/* ───────────────── COMO FUNCIONA ───────────────── */}
-      <section id="como-funciona" style={{ backgroundColor: '#0a0a0a', padding: '8rem 1.5rem' }}>
-        <div className="max-w-6xl mx-auto">
+      {/* ───── COMO FUNCIONA ───── */}
+      <section
+        id="como-funciona"
+        style={{
+          backgroundColor: '#000000',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '8rem 1.5rem',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Beam vertical esquerda */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '0', bottom: '60px', width: '1px', height: '220px', background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.40) 50%, transparent 100%)', pointerEvents: 'none', animation: 'beamRise 8s ease-in-out infinite alternate' }} />
+        {/* Beam horizontal topo-direita */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', right: '0', top: '60px', width: '200px', height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.30) 100%)', pointerEvents: 'none', animation: 'linePulse 6s ease-in-out infinite alternate-reverse' }} />
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-24 items-start">
 
-          {/* Header */}
-          <div className="text-center mb-16">
+          {/* Coluna esquerda */}
+          <div className="md:sticky md:top-28">
             <p
-              className="font-semibold tracking-widest uppercase mb-4"
-              style={{ fontSize: '0.75rem', color: '#22d3ee' }}
+              className="font-medium uppercase tracking-[0.15em] mb-4"
+              style={{ fontSize: '11px', color: 'rgba(255,255,255,0.30)' }}
             >
               Como funciona
             </p>
             <h2
-              className="font-bold tracking-tight"
-              style={{ fontSize: 'clamp(1.75rem, 5vw, 3rem)', color: '#ffffff' }}
+              className="font-semibold tracking-tight text-white"
+              style={{ fontSize: 'clamp(1.75rem,4vw,2.25rem)', lineHeight: 1.15 }}
             >
-              Três passos. Você no barco.
+              Simples como<br />deve ser.
             </h2>
-            <p className="mt-4 max-w-lg mx-auto" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem' }}>
-              Simples como pedir um táxi — só que pela água.
-            </p>
           </div>
 
-          {/* Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Coluna direita — lista editorial */}
+          <div>
             {[
               {
-                icon: MapPin,
-                step: '01',
-                title: 'Escolha o trapiche',
-                desc: 'Selecione o ponto de embarque mais próximo de você na Ilha da Gigoia.',
+                num: '01',
+                title: 'Escolha o trapiche mais próximo',
+                body: 'Selecione o ponto de embarque na Ilha da Gigoia.',
               },
               {
-                icon: Navigation,
-                step: '02',
-                title: 'Piloto navega até você',
-                desc: 'Um piloto verificado aceita sua solicitação e chega ao seu trapiche.',
+                num: '02',
+                title: 'Piloto confirmado navega até você',
+                body: 'Um piloto verificado aceita e chega ao seu trapiche.',
               },
               {
-                icon: CreditCard,
-                step: '03',
-                title: 'Pague no app',
-                desc: 'PIX instantâneo ou cartão de crédito — pagamento rápido e seguro.',
+                num: '03',
+                title: 'Pague com PIX ou cartão',
+                body: 'Pagamento integrado diretamente pelo app, sem espera.',
               },
-            ].map(({ icon: Icon, step, title, desc }) => (
+            ].map(({ num, title, body }, i) => (
               <div
-                key={step}
-                className="relative cursor-pointer transition-all duration-300"
+                key={num}
                 style={{
-                  backgroundColor: '#111111',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '1rem',
-                  padding: '2rem',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,255,255,0.15)';
-                  (e.currentTarget as HTMLDivElement).style.backgroundColor = '#161616';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,255,255,0.08)';
-                  (e.currentTarget as HTMLDivElement).style.backgroundColor = '#111111';
+                  borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                  padding: '2rem 0',
                 }}
               >
-                {/* Número decorativo */}
-                <span
-                  className="absolute top-5 right-6 font-black select-none"
-                  style={{ fontSize: '4rem', lineHeight: 1, color: 'rgba(255,255,255,0.04)' }}
+                <p
+                  className="font-mono tracking-wider mb-3"
+                  style={{ fontSize: '11px', color: 'rgba(255,255,255,0.20)' }}
                 >
-                  {step}
-                </span>
-
-                {/* Ícone */}
-                <div
-                  className="mb-6 inline-flex items-center justify-center"
-                  style={{
-                    width: '2.75rem',
-                    height: '2.75rem',
-                    borderRadius: '0.75rem',
-                    backgroundColor: 'rgba(34,211,238,0.10)',
-                    border: '1px solid rgba(34,211,238,0.20)',
-                  }}
+                  {num}
+                </p>
+                <h3
+                  className="font-medium text-white mb-2"
+                  style={{ fontSize: '1.0625rem' }}
                 >
-                  <Icon className="w-5 h-5" style={{ color: '#22d3ee' }} aria-hidden="true" />
-                </div>
-
-                <h3 className="font-semibold mb-2" style={{ fontSize: '1.125rem', color: '#ffffff' }}>
                   {title}
                 </h3>
-                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
-                  {desc}
+                <p
+                  className="font-light leading-relaxed"
+                  style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.50)' }}
+                >
+                  {body}
                 </p>
               </div>
             ))}
@@ -250,298 +306,205 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* ───────────────── FEATURES 2x2 ───────────────── */}
-      <section style={{ backgroundColor: '#000000', padding: '8rem 1.5rem' }}>
-        <div className="max-w-6xl mx-auto">
-
-          {/* Header */}
-          <div className="text-center mb-16">
-            <p
-              className="font-semibold tracking-widest uppercase mb-4"
-              style={{ fontSize: '0.75rem', color: '#22d3ee' }}
-            >
-              Por que Gamma
-            </p>
-            <h2
-              className="font-bold tracking-tight"
-              style={{ fontSize: 'clamp(1.75rem, 5vw, 3rem)', color: '#ffffff' }}
-            >
-              Feito para a vida na Ilha.
-            </h2>
-          </div>
-
-          {/* Grid 2x2 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              {
-                icon: Clock,
-                title: 'Disponível quando você precisa',
-                desc: 'Barcos nos trapiches da Ilha da Gigoia prontos para sua travessia, quando você precisar.',
-              },
-              {
-                icon: Shield,
-                title: 'Pilotos verificados',
-                desc: 'Todos os pilotos passam por verificação de documentação e avaliação contínua.',
-              },
-              {
-                icon: Users,
-                title: 'Compartilhe a travessia',
-                desc: 'Viaje com outros passageiros, divida o trajeto e reduza o custo da travessia.',
-              },
-              {
-                icon: Zap,
-                title: 'PIX ou cartão em segundos',
-                desc: 'Pagamento instantâneo direto pelo app, sem dinheiro físico ou espera.',
-              },
-            ].map(({ icon: Icon, title, desc }) => (
-              <div
-                key={title}
-                className="cursor-pointer transition-all duration-300"
-                style={{
-                  backgroundColor: '#111111',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '1rem',
-                  padding: '2rem',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,255,255,0.15)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(255,255,255,0.08)';
-                }}
-              >
-                <div
-                  className="mb-5 inline-flex items-center justify-center"
-                  style={{
-                    width: '2.75rem',
-                    height: '2.75rem',
-                    borderRadius: '0.75rem',
-                    backgroundColor: 'rgba(34,211,238,0.10)',
-                    border: '1px solid rgba(34,211,238,0.20)',
-                  }}
-                >
-                  <Icon className="w-5 h-5" style={{ color: '#22d3ee' }} aria-hidden="true" />
-                </div>
-                <h3 className="font-semibold mb-2" style={{ fontSize: '1.125rem', color: '#ffffff' }}>
-                  {title}
-                </h3>
-                <p style={{ fontSize: '0.9375rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.65 }}>
-                  {desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────── ÁREA ───────────────── */}
-      <section style={{ backgroundColor: '#0a0a0a', padding: '8rem 1.5rem' }}>
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-
-            {/* Left */}
-            <div>
-              <p
-                className="font-semibold tracking-widest uppercase mb-6"
-                style={{ fontSize: '0.75rem', color: '#22d3ee' }}
-              >
-                Onde atuamos
-              </p>
-              <h2
-                className="font-black tracking-tight mb-6"
-                style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', color: '#ffffff', lineHeight: 1.1 }}
-              >
-                Ilha da Gigoia,<br />Barra da Tijuca.
-              </h2>
-              <p
-                className="mb-8 leading-relaxed"
-                style={{ fontSize: '1.0625rem', color: 'rgba(255,255,255,0.6)' }}
-              >
-                24 trapiches conectados. Da Marina à Associação, cobrimos toda a ilha.
-              </p>
-
-              {/* Lista de trapiches */}
-              <ul className="space-y-3">
-                {['Marina da Glória', 'Trapiche da Associação', 'Praia do Abraão', 'Ponta da Joatinga'].map(name => (
-                  <li key={name} className="flex items-center gap-3">
-                    <MapPin className="w-4 h-4 shrink-0" style={{ color: '#22d3ee' }} aria-hidden="true" />
-                    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9375rem' }}>{name}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Right — card decorativo */}
-            <div
-              className="flex flex-col items-center justify-center"
-              style={{
-                backgroundColor: '#111111',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '1.5rem',
-                padding: '3rem',
-                textAlign: 'center',
-              }}
-            >
-              <Anchor className="w-16 h-16 mb-6" style={{ color: '#22d3ee' }} aria-hidden="true" />
-              <p
-                className="font-black"
-                style={{ fontSize: '5rem', lineHeight: 1, color: '#ffffff' }}
-              >
-                24
-              </p>
-              <p
-                className="font-semibold tracking-wider uppercase mt-2"
-                style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)' }}
-              >
-                trapiches
-              </p>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────── DOWNLOAD ───────────────── */}
-      <section style={{ backgroundColor: '#000000', padding: '8rem 1.5rem' }}>
-        <div
-          className="max-w-2xl mx-auto text-center"
-          style={{
-            backgroundColor: '#111111',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '1.5rem',
-            padding: '3rem',
-          }}
-        >
-          <div className="mb-8 flex justify-center">
-            <Logo size="md" variant="white" />
-          </div>
-
-          <h2
-            className="font-black tracking-tight mb-3"
-            style={{ fontSize: 'clamp(1.75rem, 5vw, 2.5rem)', color: '#ffffff' }}
-          >
-            Baixe o Gamma
-          </h2>
-          <p className="mb-10" style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem' }}>
-            Em breve na App Store e Google Play
-          </p>
-
-          {/* Store badges */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-
-            {/* App Store */}
-            <a
-              href="#"
-              aria-label="Baixar na App Store (em breve)"
-              className="cursor-pointer transition-opacity duration-200 opacity-70 hover:opacity-100"
-            >
-              <div
-                className="inline-flex items-center gap-3"
-                style={{
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
-                  padding: '0.75rem 1.5rem',
-                  borderRadius: '0.75rem',
-                  minWidth: '160px',
-                }}
-              >
-                <svg width="20" height="24" viewBox="0 0 20 24" fill="none" aria-hidden="true">
-                  <path d="M16.6 12.8c0-2.6 2.1-3.8 2.2-3.9-1.2-1.7-3-2-3.7-2-1.6-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.3-.9-2.3-3.5zM14 4.5c.7-.8 1.1-2 1-3.2-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.1-.5 2.9-1.3z" fill="#000"/>
-                </svg>
-                <div className="text-left">
-                  <p style={{ fontSize: '0.625rem', opacity: 0.7, lineHeight: 1 }}>Disponível na</p>
-                  <p style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.3 }}>App Store</p>
-                </div>
-              </div>
-            </a>
-
-            {/* Google Play */}
-            <a
-              href="#"
-              aria-label="Disponível no Google Play (em breve)"
-              className="cursor-pointer transition-opacity duration-200 opacity-70 hover:opacity-100"
-            >
-              <div
-                className="inline-flex items-center gap-3"
-                style={{
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
-                  padding: '0.75rem 1.5rem',
-                  borderRadius: '0.75rem',
-                  minWidth: '160px',
-                }}
-              >
-                <svg width="20" height="22" viewBox="0 0 20 22" fill="none" aria-hidden="true">
-                  <path d="M.5 1.1C.2 1.4 0 1.9 0 2.6v16.8c0 .7.2 1.2.5 1.5l.1.1L9.4 11v-.2L.6 1z" fill="url(#dl_gp1)"/>
-                  <path d="M12.4 14.1l-3-3V10.9l3-3 .1.1 3.6 2.1c1 .6 1 1.6 0 2.2l-3.6 2.1-.1-.3z" fill="url(#dl_gp2)"/>
-                  <path d="M12.5 14l-3.1-3.1L.5 20.1c.3.4.9.4 1.6.1L12.5 14z" fill="url(#dl_gp3)"/>
-                  <path d="M12.5 7.9L2.1.8C1.4.5.8.5.5.9L9.4 10.9l3.1-3z" fill="url(#dl_gp4)"/>
-                  <defs>
-                    <linearGradient id="dl_gp1" x1="9" y1="1.4" x2="-4" y2="14.5" gradientUnits="userSpaceOnUse"><stop stopColor="#00A0FF"/><stop offset="1" stopColor="#00A0FF" stopOpacity="0"/></linearGradient>
-                    <linearGradient id="dl_gp2" x1="17.8" y1="10.9" x2=".5" y2="10.9" gradientUnits="userSpaceOnUse"><stop stopColor="#FFD600"/><stop offset="1" stopColor="#FF6D00"/></linearGradient>
-                    <linearGradient id="dl_gp3" x1="11.5" y1="12.4" x2="-3" y2="27" gradientUnits="userSpaceOnUse"><stop stopColor="#FF3A44"/><stop offset="1" stopColor="#C31162"/></linearGradient>
-                    <linearGradient id="dl_gp4" x1="-1" y1="-4" x2="6.5" y2="3.6" gradientUnits="userSpaceOnUse"><stop stopColor="#32A071"/><stop offset="1" stopColor="#2DA771" stopOpacity="0"/></linearGradient>
-                  </defs>
-                </svg>
-                <div className="text-left">
-                  <p style={{ fontSize: '0.625rem', opacity: 0.7, lineHeight: 1 }}>Disponível no</p>
-                  <p style={{ fontSize: '1rem', fontWeight: 600, lineHeight: 1.3 }}>Google Play</p>
-                </div>
-              </div>
-            </a>
-          </div>
-
-          <p className="mt-8" style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.25)' }}>
-            Use agora via web — sem download necessário
-          </p>
-        </div>
-      </section>
-
-      {/* ───────────────── FOOTER ───────────────── */}
-      <footer
+      {/* ───── NÚMEROS / CREDIBILIDADE ───── */}
+      <section
+        id="area"
         style={{
-          backgroundColor: '#0a0a0a',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          padding: '4rem 1.5rem',
+          backgroundColor: '#080808',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '6rem 1.5rem',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        {/* Bar horizontal full-width */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '0', right: '0', top: '50%', transform: 'translateY(-50%)', height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.18) 20%, rgba(34,211,238,0.22) 50%, rgba(34,211,238,0.18) 80%, transparent 100%)', pointerEvents: 'none', animation: 'linePulse 7s ease-in-out infinite alternate' }} />
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-4">
+            {[
+              { value: '24', label: 'trapiches ativos' },
+              { value: 'Pool', label: 'compartilhado' },
+              { value: 'PIX', label: 'ou cartão' },
+              { value: 'RJ', label: 'Barra da Tijuca' },
+            ].map(({ value, label }, i) => (
+              <div
+                key={label}
+                className="text-center"
+                style={{
+                  padding: '1.5rem 2rem',
+                  borderRight: i < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                }}
+              >
+                <p
+                  className="font-semibold text-white"
+                  style={{ fontSize: 'clamp(1.75rem,4vw,2.5rem)', lineHeight: 1 }}
+                >
+                  {value}
+                </p>
+                <p
+                  className="font-medium uppercase tracking-wider mt-2"
+                  style={{ fontSize: '11px', color: 'rgba(255,255,255,0.30)' }}
+                >
+                  {label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───── PARA PILOTOS ───── */}
+      <section
+        id="para-pilotos"
+        style={{
+          backgroundColor: '#000000',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '8rem 1.5rem',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Beam vertical direita */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', right: '0', top: '60px', width: '1px', height: '260px', background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.38) 50%, transparent 100%)', pointerEvents: 'none', animation: 'beamRise 9s ease-in-out infinite alternate' }} />
+        {/* Beam horizontal esquerda-baixo */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '0', bottom: '70px', width: '160px', height: '1px', background: 'linear-gradient(90deg, rgba(34,211,238,0.28) 0%, transparent 100%)', pointerEvents: 'none', animation: 'linePulse 8s ease-in-out infinite alternate-reverse' }} />
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-24 items-center">
+
+          {/* Coluna esquerda */}
+          <div>
+            <p
+              className="font-medium uppercase tracking-[0.15em] mb-4"
+              style={{ fontSize: '11px', color: 'rgba(255,255,255,0.30)' }}
+            >
+              Para pilotos
+            </p>
+            <h2
+              className="font-semibold tracking-tight text-white mb-6"
+              style={{ fontSize: 'clamp(1.75rem,4vw,2.25rem)', lineHeight: 1.15 }}
+            >
+              Trabalhe quando e<br />quanto quiser.
+            </h2>
+            <p
+              className="font-light leading-relaxed mb-8"
+              style={{ fontSize: '0.9375rem', color: 'rgba(255,255,255,0.50)' }}
+            >
+              Seja seu próprio chefe. Aceite corridas nos principais trapiches
+              da Ilha e receba diretamente no seu app.
+            </p>
+            <button
+              onClick={() => navigate('/auth/pilot')}
+              className="cursor-pointer transition-colors duration-200 font-medium"
+              style={{
+                fontSize: '0.875rem',
+                color: '#22d3ee',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                animation: 'textGlow 3s ease-in-out infinite alternate',
+              }}
+              onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = '#67e8f9')}
+              onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = '#22d3ee')}
+            >
+              Quero ser piloto →
+            </button>
+          </div>
+
+          {/* Coluna direita — card de benefícios */}
+          <div
+            className="orb-anim"
+            style={{
+              backgroundColor: '#0e0e0e',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: '1rem',
+              padding: '2rem',
+              animation: 'borderGlow 4s ease-in-out infinite alternate',
+            }}
+          >
+            {[
+              {
+                title: 'Ganhos diretos',
+                sub: 'Receba por corrida, sem taxas escondidas.',
+              },
+              {
+                title: 'Horários flexíveis',
+                sub: 'Você define quando quer trabalhar.',
+              },
+              {
+                title: 'Área de cobertura definida',
+                sub: 'Atue nos trapiches que você conhece.',
+              },
+            ].map(({ title, sub }, i, arr) => (
+              <div
+                key={title}
+                style={{
+                  borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                  paddingBottom: i < arr.length - 1 ? '1rem' : 0,
+                  marginBottom: i < arr.length - 1 ? '1rem' : 0,
+                }}
+              >
+                <p className="font-medium text-white" style={{ fontSize: '0.875rem' }}>
+                  {title}
+                </p>
+                <p
+                  className="mt-1"
+                  style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.40)' }}
+                >
+                  {sub}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───── FOOTER ───── */}
+      <footer
+        style={{
+          backgroundColor: '#080808',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '4rem 1.5rem',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Beam horizontal footer topo */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '15%', right: '15%', top: '0', height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.20) 30%, rgba(34,211,238,0.24) 50%, rgba(34,211,238,0.20) 70%, transparent 100%)', pointerEvents: 'none', animation: 'linePulse 8s ease-in-out infinite alternate' }} />
         <div className="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-8">
 
           {/* Left */}
           <div>
             <Logo size="sm" variant="white" />
-            <p className="mt-2" style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.35)' }}>
-              Ilha da Gigoia &bull; Barra da Tijuca &bull; Rio de Janeiro
+            <p
+              className="mt-2"
+              style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)' }}
+            >
+              Ilha da Gigoia &middot; Barra da Tijuca &middot; Rio de Janeiro
             </p>
           </div>
 
-          {/* Center */}
-          <nav aria-label="Links do rodapé" className="flex gap-6">
-            <Link
-              to="/privacy"
-              className="transition-colors duration-200 cursor-pointer"
-              style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.40)' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.40)')}
-            >
-              Política de Privacidade
-            </Link>
-            <Link
-              to="/terms"
-              className="transition-colors duration-200 cursor-pointer"
-              style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.40)' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.40)')}
-            >
-              Termos de Uso
-            </Link>
+          {/* Center — links legais */}
+          <nav className="flex gap-6" aria-label="Links legais">
+            {[
+              { label: 'Política de Privacidade', to: '/privacy' },
+              { label: 'Termos de Uso', to: '/terms' },
+            ].map(({ label, to }) => (
+              <Link
+                key={to}
+                to={to}
+                className="cursor-pointer transition-colors duration-200"
+                style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.30)' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.60)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.30)')}
+              >
+                {label}
+              </Link>
+            ))}
           </nav>
 
           {/* Right */}
-          <p style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.25)' }}>
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.20)' }}>
             &copy; 2025 Gamma &middot; Simplix
           </p>
-
         </div>
       </footer>
 
