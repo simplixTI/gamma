@@ -242,19 +242,21 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     pixConfirmInProgressRef.current = true;
     setCheckingPayment(true);
     try {
-      // Poll the specific payment record (by ID) to see if webhook confirmed it
-      const { data: payment } = await supabase
-        .from('payments')
-        .select('status')
-        .eq('id', pixData?.paymentId ?? '')
+      // Check ride payment_status (more reliable than payments table due to RLS)
+      const { data: ride } = await supabase
+        .from('rides')
+        .select('payment_status')
+        .eq('id', rideId)
         .maybeSingle();
 
-      if (payment?.status === 'completed') {
+      if (ride?.payment_status === 'paid') {
         toast.success('Pagamento confirmado!');
-        onPaymentComplete?.();
-        onClose();
+        setPixConfirmed(true);
+        setTimeout(() => {
+          onPaymentComplete?.();
+          onClose();
+        }, 1500);
       } else {
-        // Not confirmed yet by webhook — show friendly message
         toast.info('Pagamento ainda não detectado. Aguarde alguns segundos e tente novamente.');
       }
     } catch (err) {
@@ -266,24 +268,24 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
-  // Auto-poll payment status every 5s after PIX QR is generated
+  // Auto-poll ride payment_status every 5s after PIX QR is generated
+  // Uses rides table instead of payments to avoid RLS policy issues
   useEffect(() => {
-    if (!pixData?.paymentId || !isOpen || pixConfirmed) return;
+    if (!rideId || !isOpen || pixConfirmed || !pixData) return;
     setAwaitingPayment(true);
 
     const interval = setInterval(async () => {
       try {
-        const { data: payment } = await supabase
-          .from('payments')
-          .select('status')
-          .eq('id', pixData.paymentId)
+        const { data: ride } = await supabase
+          .from('rides')
+          .select('payment_status')
+          .eq('id', rideId)
           .maybeSingle();
 
-        if (payment?.status === 'completed') {
+        if (ride?.payment_status === 'paid') {
           clearInterval(interval);
           setAwaitingPayment(false);
           setPixConfirmed(true);
-          // Show success for 2 seconds, then proceed
           setTimeout(() => {
             onPaymentComplete?.();
             onClose();
@@ -298,7 +300,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       clearInterval(interval);
       setAwaitingPayment(false);
     };
-  }, [pixData?.paymentId, isOpen, pixConfirmed, onPaymentComplete, onClose]);
+  }, [rideId, isOpen, pixConfirmed, pixData, onPaymentComplete, onClose]);
 
   // Reset pixConfirmed when modal closes
   useEffect(() => {
