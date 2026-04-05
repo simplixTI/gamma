@@ -1,0 +1,12 @@
+node_modules/
+android/
+ios/
+supabase/
+dist/
+.git/
+.claude/
+.planning/
+docs/
+*.apk
+*.aab
+*.ipa
