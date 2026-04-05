@@ -81,6 +81,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [pixError, setPixError] = useState<string | null>(null);
+  const [pixConfirmed, setPixConfirmed] = useState(false);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
 
   const [card, setCard] = useState<CardState>({ number: '', name: '', expiry: '', cvv: '' });
   const [cardLoading, setCardLoading] = useState(false);
@@ -263,6 +265,48 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       pixConfirmInProgressRef.current = false;
     }
   };
+
+  // Auto-poll payment status every 5s after PIX QR is generated
+  useEffect(() => {
+    if (!pixData?.paymentId || !isOpen || pixConfirmed) return;
+    setAwaitingPayment(true);
+
+    const interval = setInterval(async () => {
+      try {
+        const { data: payment } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', pixData.paymentId)
+          .maybeSingle();
+
+        if (payment?.status === 'completed') {
+          clearInterval(interval);
+          setAwaitingPayment(false);
+          setPixConfirmed(true);
+          // Show success for 2 seconds, then proceed
+          setTimeout(() => {
+            onPaymentComplete?.();
+            onClose();
+          }, 2000);
+        }
+      } catch {
+        // silent — will retry next interval
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+      setAwaitingPayment(false);
+    };
+  }, [pixData?.paymentId, isOpen, pixConfirmed, onPaymentComplete, onClose]);
+
+  // Reset pixConfirmed when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setPixConfirmed(false);
+      setAwaitingPayment(false);
+    }
+  }, [isOpen]);
 
   // NOTE: Card saving is handled entirely server-side in mp-tokenize-and-pay
   // (via the MP Customers API, which stores mp_card_id + mp_customer_id).
@@ -529,24 +573,43 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-center gap-2 text-muted text-sm mb-5">
-                    <Clock className="w-4 h-4" />
-                    <span>Expira em 30 minutos</span>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Button fullWidth size="lg" onClick={handleConfirmPix} disabled={checkingPayment} className="h-14">
-                      {checkingPayment ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verificando...</>
-                      ) : (
-                        'Já realizei o pagamento'
+                  {pixConfirmed ? (
+                    <div className="flex flex-col items-center py-6">
+                      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-3">
+                        <Check className="w-8 h-8 text-green-600" />
+                      </div>
+                      <p className="text-lg font-bold text-green-600">Pagamento confirmado!</p>
+                      <p className="text-sm text-muted mt-1">Buscando piloto...</p>
+                    </div>
+                  ) : (
+                    <>
+                      {awaitingPayment && (
+                        <div className="flex items-center justify-center gap-2 text-primary text-sm mb-3 animate-pulse">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Aguardando confirmação do pagamento...</span>
+                        </div>
                       )}
-                    </Button>
-                    <Button variant="ghost" fullWidth onClick={createPixPayment} disabled={pixLoading}>
-                      {pixLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                      Gerar novo código
-                    </Button>
-                  </div>
+
+                      <div className="flex items-center justify-center gap-2 text-muted text-sm mb-5">
+                        <Clock className="w-4 h-4" />
+                        <span>Expira em 30 minutos</span>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Button fullWidth size="lg" onClick={handleConfirmPix} disabled={checkingPayment} className="h-14">
+                          {checkingPayment ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verificando...</>
+                          ) : (
+                            'Já realizei o pagamento'
+                          )}
+                        </Button>
+                        <Button variant="ghost" fullWidth onClick={createPixPayment} disabled={pixLoading}>
+                          {pixLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                          Gerar novo código
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <div className="text-center py-10">
