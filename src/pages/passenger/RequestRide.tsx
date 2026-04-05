@@ -103,8 +103,9 @@ const RequestRide = () => {
             setPassengerCount(ride.passenger_count);
           }
 
-          // Set the current ride ID so we can update it instead of creating new
+          // Set the current ride ID and price so we can update it instead of creating new
           setCurrentRideId(rideId);
+          if (ride.price) setActiveRidePrice(Number(ride.price));
         }
       } catch (error) {
         console.error('Error restoring ride data:', error);
