@@ -16,8 +16,8 @@ COMMENT ON CONSTRAINT rides_payment_status_check ON public.rides IS 'Validates p
 -- 2. Add UNIQUE constraint on referral_discounts
 -- Prevents the same referral code from being applied multiple times by the same user
 CREATE UNIQUE INDEX IF NOT EXISTS idx_referral_discounts_unique_use
-  ON public.referral_discounts (used_by_user_id, referral_code_id)
-  WHERE used_at IS NOT NULL;
+  ON public.referral_discounts (passenger_user_id, referral_code_id)
+  WHERE is_used = TRUE;
 
 -- 3. Add missing index on wallet_transactions
 -- Optimizes queries filtering by user_id and sorting by creation date (most common access pattern)
