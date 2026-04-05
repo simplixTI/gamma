@@ -136,39 +136,53 @@ async function handleRidePayment(
   }
 
   // Verify ride exists and amount matches
-  // FIX [MEDIUM]: Previously both !rideRow and amount mismatch returned 'amount_mismatch'.
-  // Now each case returns the correct error. Both also roll back payment to 'failed'.
-  const { data: rideRow } = await supabase
+  console.log('Verifying ride:', rideId, 'mpPaymentId:', mpPaymentId);
+
+  const { data: rideRow, error: rideErr } = await supabase
     .from('rides')
     .select('price')
     .eq('id', rideId)
     .single();
 
-  if (!rideRow) {
-    console.error('Ride not found for webhook payment:', rideId);
+  if (rideErr || !rideRow) {
+    console.error('Ride not found for webhook payment:', rideId, rideErr);
     await supabase.from('payments').update({ status: 'failed' }).eq('mp_payment_id', mpPaymentId);
     return ok({ error: 'ride_not_found' });
   }
 
   const paidAmount = Number(mpPayment.transaction_amount);
   const expectedAmount = Number(rideRow.price);
+  console.log('Amount check — paid:', paidAmount, 'expected:', expectedAmount);
 
   // Allow paid >= expected (tip makes it higher) but never lower
   if (paidAmount < expectedAmount - 0.01) {
-    console.error('Amount too low for ride payment. Paid:', paidAmount, 'Expected:', expectedAmount);
+    console.error('Amount too low. Paid:', paidAmount, 'Expected:', expectedAmount);
     await supabase.from('payments').update({ status: 'failed' }).eq('mp_payment_id', mpPaymentId);
     return ok({ error: 'amount_mismatch' });
   }
 
-  await supabase
+  // Update payment to completed
+  const { error: payUpdateErr } = await supabase
     .from('payments')
     .update({ status: 'completed', paid_at: new Date().toISOString() })
     .eq('mp_payment_id', mpPaymentId);
 
-  await supabase
+  if (payUpdateErr) {
+    console.error('Failed to update payment to completed:', payUpdateErr);
+    return ok({ error: 'payment_update_failed' });
+  }
+  console.log('Payment marked completed for mp_payment_id:', mpPaymentId);
+
+  // Update ride payment status
+  const { error: rideUpdateErr } = await supabase
     .from('rides')
     .update({ payment_status: 'paid' })
     .eq('id', rideId);
+
+  if (rideUpdateErr) {
+    console.error('Failed to update ride payment_status:', rideUpdateErr);
+  }
+  console.log('Ride', rideId, 'payment_status set to paid');
 
   return ok({ success: true, type: 'ride', rideId });
 }
