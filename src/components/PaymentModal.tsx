@@ -160,7 +160,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     if (pixCreationInProgressRef.current) return;
     pixCreationInProgressRef.current = true;
     setPixLoading(true);
-    setPixData(null);
     setPixError(null);
     try {
       const { data, error } = await supabase.functions.invoke('mp-create-payment', {

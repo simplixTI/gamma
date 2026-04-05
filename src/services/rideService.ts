@@ -54,7 +54,7 @@ export const cancelRide = async (rideId: string, userId: string) => {
     .update({ status: 'cancelled' })
     .eq('id', rideId)
     .eq('status', 'pending')
-    .or(`passenger_user_id.eq.${userId},passenger_device_id.eq.${userId}`);
+    .or(`(passenger_user_id.eq.${userId},passenger_device_id.eq.${userId})`);
 
   if (error) {
     throw error;
