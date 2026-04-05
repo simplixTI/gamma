@@ -44,6 +44,7 @@ const RequestRide = () => {
   const [pierSearch, setPierSearch] = useState('');
   const [nearestPierId, setNearestPierId] = useState<string | null>(null);
   const [isRestoringRide, setIsRestoringRide] = useState(false);
+  const [activeRidePrice, setActiveRidePrice] = useState<number | null>(null);
 
   // Restore ride data if navigating from "Retomar" button with rideId
   useEffect(() => {
@@ -177,13 +178,16 @@ const RequestRide = () => {
     if (!currentRideId) {
       const { data: activeRide } = await supabase
         .from('rides')
-        .select('id')
+        .select('id, price, origin_name, destination_name')
         .eq('passenger_user_id', user.id)
         .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
         .maybeSingle();
       if (activeRide) {
-        toast.error('Você já tem uma corrida em andamento. Finalize-a antes de solicitar outra.');
-        navigate('/passenger/searching');
+        // Ride already exists — open payment for it with its stored price
+        setCurrentRideId(activeRide.id);
+        setActiveRidePrice(activeRide.price);
+        setPaymentMethod(method);
+        setShowPaymentModal(true);
         return;
       }
     }
@@ -588,7 +592,7 @@ const RequestRide = () => {
         onClose={handlePaymentCancel}
         onPaymentComplete={handlePaymentComplete}
         rideId={currentRideId || ''}
-        amount={totalPrice}
+        amount={activeRidePrice ?? totalPrice}
         initialTab={paymentMethod}
         passengerDeviceId={user?.id || ''}
         passengerName={passengerProfile?.full_name || ''}
