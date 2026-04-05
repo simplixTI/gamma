@@ -146,7 +146,7 @@ const Profile = () => {
                 {isUploadingPhoto ? (
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                 ) : photoPreview ? (
-                  <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+                  <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 ) : (
                   <User className="w-9 h-9 text-muted-foreground" />
                 )}

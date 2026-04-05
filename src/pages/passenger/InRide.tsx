@@ -195,14 +195,14 @@ const InRide = () => {
   const handleCall = () => {
     if (currentRide?.pilot_phone) {
       const digits = normalizePhone(currentRide.pilot_phone);
-      if (digits.length >= 10) window.open(`tel:+55${digits}`);
+      if (digits.length >= 10) window.location.href = `tel:+55${digits}`;
     }
   };
 
   const handleWhatsApp = () => {
     if (currentRide?.pilot_phone) {
       const digits = normalizePhone(currentRide.pilot_phone);
-      if (digits.length >= 10) window.open(`https://wa.me/55${digits}`);
+      if (digits.length >= 10) window.location.href = `https://wa.me/55${digits}`;
     }
   };
 
@@ -320,7 +320,7 @@ const InRide = () => {
               </Button>
               <Button
                 className="flex-1 h-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                onClick={() => { window.open('tel:190'); setShowEmergencyConfirm(false); }}
+                onClick={() => { window.location.href = 'tel:190'; setShowEmergencyConfirm(false); }}
               >
                 Confirmar
               </Button>

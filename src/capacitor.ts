@@ -66,7 +66,20 @@ export async function initMobilePlugins() {
     // supabase-js can parse the access_token/code from the hash/query params.
     CapApp.addListener('appUrlOpen', async ({ url }) => {
       if (url.includes('access_token') || url.includes('code=') || url.includes('/auth/callback')) {
-        window.location.href = url;
+        // Validate URL origin to prevent malicious deep links
+        try {
+          const urlObj = new URL(url);
+          const allowedOrigin = import.meta.env.VITE_APP_URL || 'https://gamma.app.br';
+          const allowedOriginObj = new URL(allowedOrigin);
+
+          if (urlObj.origin === allowedOriginObj.origin) {
+            window.location.href = url;
+          } else {
+            console.warn('[Capacitor] Rejected deep link from untrusted origin:', urlObj.origin);
+          }
+        } catch (err) {
+          console.warn('[Capacitor] Invalid deep link URL:', err);
+        }
       }
     });
   } catch {

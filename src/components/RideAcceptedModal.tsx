@@ -85,7 +85,7 @@ const RideAcceptedModal = ({
                 <Button
                   variant="secondary"
                   size="icon"
-                  onClick={() => window.open(`tel:${pilotPhone}`)}
+                  onClick={() => window.location.href = `tel:${pilotPhone}`}
                   className="rounded-full"
                 >
                   <Phone className="w-4 h-4" />

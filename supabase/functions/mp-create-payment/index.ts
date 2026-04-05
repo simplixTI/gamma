@@ -206,15 +206,30 @@ Deno.serve(async (req) => {
       hasToken: !!cardToken,
     });
 
-    const mpResponse = await fetch(`${MP_API}/v1/payments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
-        'Content-Type': 'application/json',
-        'X-Idempotency-Key': `ride-${rideId}-${paymentMethod}`,
-      },
-      body: JSON.stringify(mpPayload),
-    });
+    const abortCtl = new AbortController();
+    const fetchTimeout = setTimeout(() => abortCtl.abort(), 15000);
+    let mpResponse: Response;
+    try {
+      mpResponse = await fetch(`${MP_API}/v1/payments`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+          'X-Idempotency-Key': `ride-${rideId}-${paymentMethod}`,
+        },
+        body: JSON.stringify(mpPayload),
+        signal: abortCtl.signal,
+      });
+      clearTimeout(fetchTimeout);
+    } catch (err) {
+      clearTimeout(fetchTimeout);
+      if ((err as Error).name === 'AbortError') {
+        return new Response(JSON.stringify({ success: false, error: 'Mercado Pago não respondeu a tempo. Tente novamente.' }), {
+          status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
 
     const mpData = await mpResponse.json();
 

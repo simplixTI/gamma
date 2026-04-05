@@ -264,7 +264,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
       <div className={cn("relative w-full h-full bg-destructive/5 flex items-center justify-center p-4", className)}>
         <div className="bg-card rounded-2xl shadow-elevated p-4 max-w-sm w-full text-center">
           <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
-          <h3 className="font-bold text-foreground mb-2 text-sm">API Key não configurada</h3>
+          <h3 className="font-bold text-foreground mb-2 text-sm">Chave do Google Maps não configurada</h3>
           <p className="text-xs text-muted mb-3">
             Configure VITE_GOOGLE_MAPS_KEY no arquivo .env
           </p>
@@ -285,7 +285,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.location.reload()}
+            onClick={() => { window.history.go(0); }}
           >
             Tentar novamente
           </Button>

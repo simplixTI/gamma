@@ -327,7 +327,7 @@ const ActiveRide = () => {
     const lat = dest.coordinates[1];
     const lng = dest.coordinates[0];
     const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener');
   };
 
   const getActionText = () => {

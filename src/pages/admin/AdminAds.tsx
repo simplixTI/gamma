@@ -182,7 +182,7 @@ const AdminAds = () => {
                 />
               </div>
               {form.image_url && (
-                <img src={form.image_url} alt="Preview" className="mt-2 w-full h-24 object-cover rounded-lg" />
+                <img src={form.image_url} alt="Preview" className="mt-2 w-full h-24 object-cover rounded-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               )}
             </div>
             <div>

@@ -214,7 +214,7 @@ const PilotProfileEdit = () => {
         <div className="relative">
           <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background shadow-lg">
             {profile.photo_url ? (
-              <img src={profile.photo_url} alt="Foto" className="w-full h-full object-cover" />
+              <img src={profile.photo_url} alt="Foto" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             ) : (
               <User className="w-12 h-12 text-muted-foreground" />
             )}

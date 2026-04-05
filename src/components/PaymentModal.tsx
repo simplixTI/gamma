@@ -196,20 +196,27 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     if (!pixData?.copyPaste) return;
     try {
       await navigator.clipboard.writeText(pixData.copyPaste);
+      toast.success('Código PIX copiado!');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
     } catch {
-      // Fallback for HTTP or when Clipboard API permission is denied
-      const ta = document.createElement('textarea');
-      ta.value = pixData.copyPaste;
-      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try { document.execCommand('copy'); } catch { /* ignore */ }
-      document.body.removeChild(ta);
+      // Fallback for Capacitor/mobile when Clipboard API fails
+      const textArea = document.createElement('textarea');
+      textArea.value = pixData.copyPaste;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        toast.success('Código PIX copiado!');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      } catch {
+        toast.error('Não foi possível copiar. Copie manualmente.');
+      }
+      document.body.removeChild(textArea);
     }
-    setCopied(true);
-    toast.success('Código PIX copiado!');
-    setTimeout(() => setCopied(false), 3000);
   };
 
   const handleConfirmPix = async () => {

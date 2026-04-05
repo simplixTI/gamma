@@ -89,7 +89,7 @@ const AdminPilotApproval = () => {
 
   const openDoc = async (path: string) => {
     const url = await getDocUrl(path);
-    if (url) window.open(url, '_blank');
+    if (url) window.open(url, '_blank', 'noopener');
     else toast.error('Erro ao abrir documento');
   };
 
@@ -115,6 +115,9 @@ const AdminPilotApproval = () => {
         status === 'approved' ? 'Piloto aprovado!' :
         status === 'rejected' ? 'Piloto reprovado' : 'Status atualizado'
       );
+    } catch (err) {
+      console.error('Error updating status:', err);
+      toast.error('Erro ao atualizar status do piloto. Tente novamente.');
 
       // Notify pilot via push notification (fire-and-forget — don't block UI)
       const pilot = pilots.find(p => p.id === pilotId);
@@ -133,8 +136,6 @@ const AdminPilotApproval = () => {
 
       await load();
       setExpanded(null);
-    } catch (err) {
-      toast.error('Erro ao atualizar status');
     } finally {
       setActionLoading(null);
     }

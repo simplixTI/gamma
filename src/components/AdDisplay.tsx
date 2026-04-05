@@ -50,6 +50,7 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
               alt={ad.title}
               className="w-full h-28 object-cover"
               loading="lazy"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           )}
           <div className="px-4 py-3">

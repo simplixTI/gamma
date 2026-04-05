@@ -75,6 +75,7 @@ const PilotCard: React.FC<PilotCardProps> = ({
             alt={pilot.name}
             className="w-12 h-12 rounded-full object-cover"
             style={{ boxShadow: '0 0 0 2px hsl(var(--primary) / 0.3)' }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
           {/* Online indicator */}
           <span className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-card" />

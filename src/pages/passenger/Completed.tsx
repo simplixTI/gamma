@@ -79,6 +79,18 @@ const Completed = () => {
 
   const rideId = location.state?.rideId;
 
+  // Reset ride state on unmount so user can request new ride
+  // even if they navigate away without completing the flow
+  useEffect(() => {
+    return () => {
+      setRideStatus('idle');
+      setOrigin(null);
+      setDestination(null);
+      setCurrentPilot(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fetch ride data, payment status, and wallet balance
   useEffect(() => {
     if (!rideId) {

@@ -130,6 +130,9 @@ const SearchingPilot = () => {
               duration: 5000,
             });
             navigate('/passenger/tracking', { state: { rideId: updatedRide.id } });
+          } else if (updatedRide.status === 'pending') {
+            // Pilot cancelled after accepting — reset lock to allow re-navigation
+            navigatedToTrackingRef.current = false;
           } else if (updatedRide.status === 'cancelled') {
             // Only act on cancel if we haven't already navigated to tracking
             // (prevents cancel overriding a simultaneous accept event)
@@ -188,23 +191,38 @@ const SearchingPilot = () => {
     }
   }, [searchTime]);
 
-  // Trigger auto-cancel when timeout is reached
+  // Trigger auto-cancel when timeout is reached (fetch fresh status first)
   useEffect(() => {
     if (searchTime >= 300 && currentRideId && !navigatedToTrackingRef.current) {
       navigatedToTrackingRef.current = true;
-      cancelRide(currentRideId, user?.id ?? '')
-        .then(() => {
-          toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
-        })
-        .catch(() => {
-          toast.error('Tempo esgotado. Tente novamente.');
-        })
-        .finally(() => {
-          setRideStatus('idle');
-          navigate('/passenger');
-        });
+
+      const checkAndCancel = async () => {
+        try {
+          const freshRide = await getCurrentRide(user?.id ?? '');
+          if (freshRide && (freshRide.status === 'accepted' || freshRide.status === 'in_progress' || freshRide.status === 'pilot_arriving')) {
+            navigatedToTrackingRef.current = false;
+            return; // pilot accepted — don't cancel
+          }
+        } catch (err) {
+          console.error('Error checking ride status before auto-cancel:', err);
+        }
+
+        cancelRide(currentRideId, user?.id ?? '')
+          .then(() => {
+            toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
+          })
+          .catch(() => {
+            toast.error('Tempo esgotado. Tente novamente.');
+          })
+          .finally(() => {
+            setRideStatus('idle');
+            navigate('/passenger');
+          });
+      };
+
+      checkAndCancel();
     }
-  }, [searchTime, currentRideId, navigate, setRideStatus]);
+  }, [searchTime, currentRideId, navigate, setRideStatus, user?.id]);
 
   const handleCancel = async () => {
     // Prevent double-cancellation if realtime/polling has already navigated away

@@ -411,7 +411,6 @@ const WalletPage = () => {
 
                   <div className="flex items-center justify-center gap-2 text-muted text-sm mb-5">
                     <Clock className="w-4 h-4" />
-                    {/* FIX [LOW]: wallet-topup uses getPixExpiry24h() — 24h, not 30min */}
                     <span>Expira em 24 horas • O saldo é creditado automaticamente</span>
                   </div>
 

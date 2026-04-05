@@ -13,12 +13,23 @@ import TermsModal from '@/components/TermsModal';
 import { z } from 'zod';
 import { validateCPF, formatCPF, formatPhone } from '@/utils/validators';
 
+// Validate password meets complexity requirements: 8+ chars, 1 uppercase, 1 number
+const validatePassword = (password: string): string | null => {
+  if (password.length < 8) return 'Senha deve ter pelo menos 8 caracteres';
+  if (!/[A-Z]/.test(password)) return 'Senha deve conter ao menos uma letra maiúscula';
+  if (!/[0-9]/.test(password)) return 'Senha deve conter ao menos um número';
+  return null;
+};
+
+// Allowed MIME types for document uploads
+const ALLOWED_DOC_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
 const signUpSchema = z.object({
   fullName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   phone: z.string().min(10, 'Telefone inválido'),
   email: z.string().email('Email inválido'),
   cpf: z.string().refine((val) => validateCPF(val), { message: 'CPF inválido' }),
-  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
   boatType: z.string().min(1, 'Tipo de barco é obrigatório'),
   boatIdentification: z.string().min(1, 'Identificação do barco é obrigatória'),
 });
@@ -102,6 +113,13 @@ const PilotAuth = () => {
   const handleDocChange = (docType: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate MIME type
+    if (!ALLOWED_DOC_TYPES.includes(file.type)) {
+      toast.error('Tipo de arquivo não permitido. Aceitos: JPEG, PNG, WebP, PDF');
+      return;
+    }
+
     if (file.size > 10 * 1024 * 1024) {
       toast.error('Arquivo muito grande. Máximo 10 MB por documento.');
       return;
@@ -116,6 +134,13 @@ const PilotAuth = () => {
         return;
       }
 
+      // Validate password complexity before Zod validation
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        toast.error(passwordError);
+        return;
+      }
+
       const validation = signUpSchema.safeParse({
         fullName,
         phone,
@@ -125,7 +150,7 @@ const PilotAuth = () => {
         boatType,
         boatIdentification,
       });
-      
+
       if (!validation.success) {
         toast.error(validation.error.errors[0].message);
         return;

@@ -88,7 +88,10 @@ Deno.serve(async (req) => {
 
     if (!MP_WEBHOOK_SECRET) {
       console.error('[wallet-webhook] MP_WEBHOOK_SECRET not configured — rejecting all webhook calls');
-      return ok({ error: 'webhook_not_configured' });
+      return new Response(JSON.stringify({ error: 'webhook_not_configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);

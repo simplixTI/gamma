@@ -49,6 +49,7 @@ const RideRequestCard: React.FC<RideRequestCardProps> = ({
               src={ride.passengerPhoto}
               alt={ride.passengerName}
               className="w-12 h-12 rounded-full object-cover border-2 border-primary-foreground"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-success rounded-full border-2 border-primary" />
           </div>

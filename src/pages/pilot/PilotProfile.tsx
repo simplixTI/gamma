@@ -186,7 +186,7 @@ const PilotProfile = () => {
             {uploadingPhoto ? (
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             ) : pilotProfile?.photo_url ? (
-              <img src={pilotProfile.photo_url} alt="Foto" className="w-full h-full object-cover" loading="lazy" />
+              <img src={pilotProfile.photo_url} alt="Foto" className="w-full h-full object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             ) : (
               <User className="w-12 h-12 text-muted-foreground" />
             )}
@@ -321,7 +321,7 @@ const PilotProfile = () => {
             <div className="flex flex-wrap gap-2">
               {pilotProfile?.boat_photos?.map((photo, index) => (
                 <div key={index} className="relative w-20 h-20">
-                  <img src={photo} alt={`Barco ${index + 1}`} className="w-full h-full object-cover rounded-lg" loading="lazy" />
+                  <img src={photo} alt={`Barco ${index + 1}`} className="w-full h-full object-cover rounded-lg" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <button
                     onClick={() => handleRemoveBoatPhoto(index)}
                     className="absolute -top-2 -right-2 w-6 h-6 bg-destructive rounded-full flex items-center justify-center"

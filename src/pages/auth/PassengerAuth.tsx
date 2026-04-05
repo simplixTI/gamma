@@ -13,12 +13,20 @@ import TermsModal from '@/components/TermsModal';
 import { z } from 'zod';
 import { validateCPF, formatCPF, formatPhone } from '@/utils/validators';
 
+// Validate password meets complexity requirements: 8+ chars, 1 uppercase, 1 number
+const validatePassword = (password: string): string | null => {
+  if (password.length < 8) return 'Senha deve ter pelo menos 8 caracteres';
+  if (!/[A-Z]/.test(password)) return 'Senha deve conter ao menos uma letra maiúscula';
+  if (!/[0-9]/.test(password)) return 'Senha deve conter ao menos um número';
+  return null;
+};
+
 const signUpSchema = z.object({
   fullName: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   phone: z.string().min(10, 'Telefone inválido'),
   email: z.string().email('Email inválido'),
   cpf: z.string().refine((val) => validateCPF(val), { message: 'CPF inválido' }),
-  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
 });
 
 const signInSchema = z.object({
@@ -76,6 +84,13 @@ const PassengerAuth = () => {
     try {
       if (!acceptedTerms || !acceptedPrivacy) {
         toast.error('Você precisa aceitar os termos de uso e política de privacidade');
+        return;
+      }
+
+      // Validate password complexity before Zod validation
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        toast.error(passwordError);
         return;
       }
 

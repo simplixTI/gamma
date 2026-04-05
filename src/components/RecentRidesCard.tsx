@@ -25,7 +25,7 @@ const RecentRidesCard = () => {
   useEffect(() => {
     const fetchRecentRides = async () => {
       if (!user?.id) { setIsLoading(false); return; }
-      
+
       // Fetch rides with payment status
       const { data: ridesData, error: ridesError } = await supabase
         .from('rides')
@@ -37,6 +37,7 @@ const RecentRidesCard = () => {
 
       if (ridesError) {
         console.error('Error fetching rides:', ridesError);
+        toast.error('Erro ao carregar corridas recentes.');
         setIsLoading(false);
         return;
       }
