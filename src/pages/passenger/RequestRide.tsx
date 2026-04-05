@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Clock, Navigation, MapPin, Users, Tag, QrCode, CreditCard, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,11 @@ import PaymentModal from '@/components/PaymentModal';
 import ProfileIncompleteModal from '@/components/ProfileIncompleteModal';
 import { validatePassengerProfile } from '@/utils/profileValidation';
 import { safeDbOperation, getFriendlyErrorMessage } from '@/utils/retryOperation';
+import { DbRide } from '@/types';
 
 const RequestRide = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     origin,
     setOrigin,
@@ -41,6 +43,78 @@ const RequestRide = () => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
   const [pierSearch, setPierSearch] = useState('');
   const [nearestPierId, setNearestPierId] = useState<string | null>(null);
+  const [isRestoringRide, setIsRestoringRide] = useState(false);
+
+  // Restore ride data if navigating from "Retomar" button with rideId
+  useEffect(() => {
+    const restoreRideData = async () => {
+      const rideId = (location.state as any)?.rideId;
+      if (!rideId || origin || isRestoringRide) return;
+
+      setIsRestoringRide(true);
+      try {
+        const { data: ride, error } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', rideId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error fetching ride:', error);
+          return;
+        }
+
+        if (ride) {
+          // Restore origin from ride data
+          const originLocation = locations.find(loc => loc.id === ride.origin_pier_id);
+          if (originLocation) {
+            setOrigin(originLocation);
+          } else {
+            // Fallback if pier ID not in mockData
+            setOrigin({
+              id: ride.origin_pier_id || 'origin',
+              name: ride.origin_name || 'Origem',
+              address: ride.origin_address || '',
+              coordinates: (ride.origin_lng != null && ride.origin_lat != null)
+                ? [ride.origin_lng, ride.origin_lat]
+                : [0, 0],
+            });
+          }
+
+          // Restore destination from ride data
+          const destLocation = locations.find(loc => loc.id === ride.destination_pier_id);
+          if (destLocation) {
+            setDestination(destLocation);
+          } else {
+            // Fallback if pier ID not in mockData
+            setDestination({
+              id: ride.destination_pier_id || 'destination',
+              name: ride.destination_name || 'Destino',
+              address: ride.destination_address || '',
+              coordinates: (ride.destination_lng != null && ride.destination_lat != null)
+                ? [ride.destination_lng, ride.destination_lat]
+                : [0, 0],
+            });
+          }
+
+          // Restore passenger count from ride
+          if (ride.passenger_count && ride.passenger_count > 0) {
+            setPassengerCount(ride.passenger_count);
+          }
+
+          // Set the current ride ID so we can update it instead of creating new
+          setCurrentRideId(rideId);
+        }
+      } catch (error) {
+        console.error('Error restoring ride data:', error);
+        toast.error('Erro ao restaurar dados da corrida');
+      } finally {
+        setIsRestoringRide(false);
+      }
+    };
+
+    restoreRideData();
+  }, [location.state, origin, setOrigin, setDestination, isRestoringRide]);
 
   // Detect nearest pier via GPS on mount (for origin suggestion)
   useEffect(() => {
@@ -99,50 +173,80 @@ const RequestRide = () => {
       return;
     }
 
-    // Prevent multiple concurrent active rides per user
-    const { data: activeRide } = await supabase
-      .from('rides')
-      .select('id')
-      .eq('passenger_user_id', user.id)
-      .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
-      .maybeSingle();
-    if (activeRide) {
-      toast.error('Você já tem uma corrida em andamento. Finalize-a antes de solicitar outra.');
-      navigate('/passenger/searching');
-      return;
+    // If not updating an existing ride, prevent multiple concurrent active rides per user
+    if (!currentRideId) {
+      const { data: activeRide } = await supabase
+        .from('rides')
+        .select('id')
+        .eq('passenger_user_id', user.id)
+        .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
+        .maybeSingle();
+      if (activeRide) {
+        toast.error('Você já tem uma corrida em andamento. Finalize-a antes de solicitar outra.');
+        navigate('/passenger/searching');
+        return;
+      }
     }
 
     setIsCreating(true);
     try {
       const { data: result, error: opError } = await safeDbOperation(async () => {
-        const { data: rideData, error: rideError } = await supabase
-          .from('rides')
-          .insert({
-            origin_name: origin.name,
-            origin_address: origin.address,
-            origin_lat: origin.coordinates[1],
-            origin_lng: origin.coordinates[0],
-            origin_pier_id: origin.id,
-            destination_name: destination.name,
-            destination_address: destination.address,
-            destination_lat: destination.coordinates[1],
-            destination_lng: destination.coordinates[0],
-            destination_pier_id: destination.id,
-            price: totalPrice,
-            passenger_count: passengerCount,
-            estimated_time: time,
-            passenger_device_id: user.id,
-            passenger_user_id: user.id,
-            passenger_name: passengerProfile?.full_name,
-            passenger_phone: passengerProfile?.phone,
-            status: 'pending',
-            payment_status: 'pending',
-          })
-          .select()
-          .single();
+        // If currentRideId exists, update the existing ride; otherwise create a new one
+        if (currentRideId) {
+          const { data: updatedRide, error: updateError } = await supabase
+            .from('rides')
+            .update({
+              origin_name: origin.name,
+              origin_address: origin.address,
+              origin_lat: origin.coordinates[1],
+              origin_lng: origin.coordinates[0],
+              origin_pier_id: origin.id,
+              destination_name: destination.name,
+              destination_address: destination.address,
+              destination_lat: destination.coordinates[1],
+              destination_lng: destination.coordinates[0],
+              destination_pier_id: destination.id,
+              price: totalPrice,
+              passenger_count: passengerCount,
+              estimated_time: time,
+              payment_status: 'pending',
+            })
+            .eq('id', currentRideId)
+            .select()
+            .single();
 
-        if (rideError) throw rideError;
-        return rideData;
+          if (updateError) throw updateError;
+          return updatedRide;
+        } else {
+          const { data: rideData, error: rideError } = await supabase
+            .from('rides')
+            .insert({
+              origin_name: origin.name,
+              origin_address: origin.address,
+              origin_lat: origin.coordinates[1],
+              origin_lng: origin.coordinates[0],
+              origin_pier_id: origin.id,
+              destination_name: destination.name,
+              destination_address: destination.address,
+              destination_lat: destination.coordinates[1],
+              destination_lng: destination.coordinates[0],
+              destination_pier_id: destination.id,
+              price: totalPrice,
+              passenger_count: passengerCount,
+              estimated_time: time,
+              passenger_device_id: user.id,
+              passenger_user_id: user.id,
+              passenger_name: passengerProfile?.full_name,
+              passenger_phone: passengerProfile?.phone,
+              status: 'pending',
+              payment_status: 'pending',
+            })
+            .select()
+            .single();
+
+          if (rideError) throw rideError;
+          return rideData;
+        }
       }, { maxAttempts: 3 });
 
       if (opError) {
@@ -156,7 +260,7 @@ const RequestRide = () => {
         setShowPaymentModal(true);
       }
     } catch (error) {
-      console.error('Error creating ride:', error);
+      console.error('Error creating/updating ride:', error);
       toast.error(getFriendlyErrorMessage(error));
     } finally {
       setIsCreating(false);

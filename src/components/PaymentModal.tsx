@@ -158,10 +158,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const createPixPayment = async () => {
     if (pixCreationInProgressRef.current) return;
+
+    // Guard: prevent PIX generation when amount is 0
+    if (totalAmount <= 0) {
+      setPixError('Valor da corrida não disponível. Feche e tente novamente.');
+      setPixLoading(false);
+      pixCreationInProgressRef.current = false;
+      return;
+    }
+
     pixCreationInProgressRef.current = true;
     setPixLoading(true);
     setPixError(null);
     try {
+      // Ensure session is fresh before invoking function (prevents 401 from expired JWT)
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn('Token refresh warning:', refreshError);
+        // Continue anyway — supabase.functions.invoke will use current token
+      }
+
       const { data, error } = await supabase.functions.invoke('mp-create-payment', {
         body: {
           rideId,
@@ -271,6 +287,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setCardResult(null);
 
     try {
+      // Ensure session is fresh before invoking function (prevents 401 from expired JWT)
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn('Token refresh warning:', refreshError);
+        // Continue anyway — supabase.functions.invoke will use current token
+      }
+
       const { data, error } = await supabase.functions.invoke('mp-tokenize-and-pay', {
         body: {
           cardNumber: rawNumber,
@@ -342,6 +365,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setCardResult(null);
 
     try {
+      // Ensure session is fresh before invoking function (prevents 401 from expired JWT)
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn('Token refresh warning:', refreshError);
+        // Continue anyway — supabase.functions.invoke will use current token
+      }
+
       const { data, error } = await supabase.functions.invoke('mp-tokenize-and-pay', {
         body: {
           savedCardId: selectedSavedCard.id,
@@ -409,10 +439,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
         {/* Amount */}
         <div className="text-center pt-4 pb-2">
-          <p className="text-sm text-muted">Valor total</p>
-          <p className="text-4xl font-bold text-foreground">
-            R$ {totalAmount.toFixed(2).replace('.', ',')}
-          </p>
+          {totalAmount <= 0 ? (
+            <>
+              <p className="text-sm text-destructive">Valor indisponível</p>
+              <p className="text-sm text-destructive/80 mt-1">A corrida não possui valor definido</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">Valor total</p>
+              <p className="text-4xl font-bold text-foreground">
+                R$ {totalAmount.toFixed(2).replace('.', ',')}
+              </p>
+            </>
+          )}
         </div>
 
         {/* Tab selector */}

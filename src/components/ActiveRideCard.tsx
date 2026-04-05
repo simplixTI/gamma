@@ -52,7 +52,7 @@ const ActiveRideCard = ({ ride, userType, onCancelled }: ActiveRideCardProps) =>
   const handleResume = () => {
     if (userType === 'passenger') {
       if (ride.status === 'pending') {
-        navigate('/passenger/searching', { replace: true });
+        navigate('/passenger/request', { state: { rideId: ride.id }, replace: true });
       } else if (ride.status === 'accepted' || ride.status === 'pilot_arriving') {
         navigate('/passenger/tracking', { state: { rideId: ride.id }, replace: true });
       } else if (ride.status === 'in_progress') {

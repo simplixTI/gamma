@@ -146,10 +146,11 @@ Deno.serve(async (req) => {
     }
 
     // Use integer-cent comparison to avoid floating-point rounding issues
+    // Allow amount >= base price (tip makes it higher, but never lower)
     const paidCents = Math.round(totalAmount * 100);
-    const expectedCents = Math.round(Number(rideRow.price) * 100);
-    if (paidCents !== expectedCents) {
-      console.error(`Amount mismatch: client sent ${totalAmount}, DB has ${rideRow.price}`);
+    const baseCents = Math.round(Number(rideRow.price) * 100);
+    if (paidCents < baseCents) {
+      console.error(`Amount too low: client sent ${totalAmount}, DB base price is ${rideRow.price}`);
       return new Response(JSON.stringify({ success: false, error: 'amount_mismatch' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

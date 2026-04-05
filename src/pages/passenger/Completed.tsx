@@ -79,26 +79,14 @@ const Completed = () => {
 
   const rideId = location.state?.rideId;
 
-  // Reset ride state on unmount so user can request new ride
-  // even if they navigate away without completing the flow
-  useEffect(() => {
-    return () => {
-      setRideStatus('idle');
-      setOrigin(null);
-      setDestination(null);
-      setCurrentPilot(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Note: Do NOT reset origin/destination on unmount. They should persist
+  // so user can request another ride. Only reset on logout (handled in AppContext).
+  // The Completed page is the END of a ride flow, not the start of a new one.
 
   // Fetch ride data, payment status, and wallet balance
   useEffect(() => {
     if (!rideId) {
       toast.error('Corrida não encontrada.');
-      setRideStatus('idle');
-      setOrigin(null);
-      setDestination(null);
-      setCurrentPilot(null);
       navigate('/passenger');
       return;
     }
@@ -204,10 +192,11 @@ const Completed = () => {
   }, [rating, confettiTriggered]);
 
   const resetState = () => {
+    // Only reset ride-specific state. Keep origin/destination so user can
+    // immediately request another ride with the same route if desired.
     setRideStatus('idle');
-    setOrigin(null);
-    setDestination(null);
     setCurrentPilot(null);
+    // DO NOT clear setOrigin/setDestination — they should persist for next ride
   };
 
   const handleSubmit = async () => {

@@ -29,8 +29,22 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [rideStatus, setRideStatus] = useState<RideStatus>('idle');
-  const [origin, setOrigin] = useState<Location | null>(null);
-  const [destination, setDestination] = useState<Location | null>(null);
+  const [origin, setOriginState] = useState<Location | null>(() => {
+    try {
+      const stored = localStorage.getItem('gamma_ride_origin');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [destination, setDestinationState] = useState<Location | null>(() => {
+    try {
+      const stored = localStorage.getItem('gamma_ride_destination');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [currentPilot, setCurrentPilot] = useState<Pilot | null>(null);
   const [isPilotOnline, setIsPilotOnlineState] = useState(() => {
     try { return localStorage.getItem('gamma_pilot_online') === '1'; } catch { return false; }
@@ -40,6 +54,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsPilotOnlineState(online);
   };
   const [passengerCount, setPassengerCount] = useState(1);
+
+  // Wrapper setters to also persist to localStorage
+  const setOrigin = (location: Location | null) => {
+    setOriginState(location);
+    try {
+      if (location) {
+        localStorage.setItem('gamma_ride_origin', JSON.stringify(location));
+      } else {
+        localStorage.removeItem('gamma_ride_origin');
+      }
+    } catch {}
+  };
+
+  const setDestination = (location: Location | null) => {
+    setDestinationState(location);
+    try {
+      if (location) {
+        localStorage.setItem('gamma_ride_destination', JSON.stringify(location));
+      } else {
+        localStorage.removeItem('gamma_ride_destination');
+      }
+    } catch {}
+  };
 
   // Clear ride state when user logs out or changes to prevent stale data
   useEffect(() => {
@@ -51,6 +88,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentPilot(null);
         setPassengerCount(1);
         setIsPilotOnline(false);
+        // Also clear persisted ride locations
+        try {
+          localStorage.removeItem('gamma_ride_origin');
+          localStorage.removeItem('gamma_ride_destination');
+        } catch {}
       }
     });
     return () => subscription.unsubscribe();
@@ -95,7 +137,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     calculatePrice,
     calculateDistance,
     calculateTime,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [userRole, rideStatus, origin, destination, currentPilot, isPilotOnline, passengerCount]);
 
   return (
