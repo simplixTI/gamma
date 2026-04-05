@@ -213,14 +213,24 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 
   // Smooth pilot marker animation — interpolate position over 500ms to avoid GPS teleport
   useEffect(() => {
-    if (!pilotPosition || !pilotMarkerRef.current) return;
+    // Always clear previous interval first to prevent queuing
+    if (animationIntervalRef.current) {
+      clearInterval(animationIntervalRef.current);
+      animationIntervalRef.current = null;
+    }
 
-    const prev = prevPilotPositionRef.current ?? pilotPosition;
+    if (!pilotPosition || !map || !prevPilotPositionRef.current) {
+      // Just update the marker directly without animation
+      if (pilotMarkerRef.current && pilotPosition) {
+        pilotMarkerRef.current.setPosition(pilotPosition);
+      }
+      prevPilotPositionRef.current = pilotPosition;
+      return;
+    }
+
+    const prev = prevPilotPositionRef.current;
     const from = { lat: prev.lat, lng: prev.lng };
     const to = { lat: pilotPosition.lat, lng: pilotPosition.lng };
-
-    // Clear any in-progress animation before starting a new one
-    if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
 
     const STEPS = 20;
     const DURATION_MS = 500;
@@ -240,9 +250,12 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
     }, DURATION_MS / STEPS);
 
     return () => {
-      if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
+      if (animationIntervalRef.current) {
+        clearInterval(animationIntervalRef.current);
+        animationIntervalRef.current = null;
+      }
     };
-  }, [pilotPosition]);
+  }, [pilotPosition, map]);
 
   const onLoad = useCallback((map: google.maps.Map) => {
     setMap(map);

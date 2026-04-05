@@ -40,6 +40,7 @@ const PilotDashboard = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const activeRidesRef = useRef<typeof activeRides>([]);
+  const acceptLockRef = useRef(false);
   const { permission, requestPermission, notifyNewRideRequest } = useNotifications();
   const { playNewRideSound } = useNotificationSound();
   // Stable refs so the realtime channel effect never re-subscribes due to these callbacks updating
@@ -140,6 +141,24 @@ const PilotDashboard = () => {
     fetchActiveRides();
   }, [pilotId, fetchActiveRides]);
 
+  // Crash recovery: check for active rides on mount and resume
+  useEffect(() => {
+    if (!pilotId) return;
+    const checkActiveRide = async () => {
+      const { data } = await supabase
+        .from('rides')
+        .select('id, status, passenger_name, origin_name')
+        .eq('pilot_id', pilotId)
+        .in('status', ['accepted', 'pilot_arriving', 'in_progress'])
+        .maybeSingle();
+      if (data) {
+        toast.info(`Corrida ativa com ${data.passenger_name}. Retomando...`);
+        navigate(`/pilot/ride/${data.id}`);
+      }
+    };
+    checkActiveRide();
+  }, [pilotId]);
+
   useEffect(() => {
     if (!isPilotOnline) {
       setRides([]);
@@ -217,15 +236,18 @@ const PilotDashboard = () => {
   }), [stats.ridesToday, stats.earnings, stats.rating]);
 
   const handleAcceptRide = async (rideId: string) => {
-    if (acceptingRideId || !pilotId) {
+    // Check and acquire lock to prevent double-accept
+    if (acceptLockRef.current || !pilotId) {
       if (!pilotId) toast.error('Erro: ID do piloto não disponível');
       return;
     }
+    acceptLockRef.current = true;
 
     const validation = validatePilotProfile(pilotProfile);
     if (!validation.isValid) {
       setMissingFields(validation.missingFields);
       setShowProfileModal(true);
+      acceptLockRef.current = false;
       return;
     }
 
@@ -234,10 +256,14 @@ const PilotDashboard = () => {
     const groupSize = rideToAccept?.passengerCount ?? 1;
     if (groupSize > availableSeats) {
       toast.error(`Sem espaço: ${availableSeats} lugar(es) disponível(is), grupo precisa de ${groupSize}`);
+      acceptLockRef.current = false;
       return;
     }
 
     setAcceptingRideId(rideId);
+    // Optimistic removal: remove ride from list immediately after successful accept
+    setRides((prev) => prev.filter((r) => r.id !== rideId));
+
     try {
       const { data, error } = await supabase.rpc('accept_pool_ride', {
         p_ride_id: rideId,
@@ -250,24 +276,25 @@ const PilotDashboard = () => {
       if (error) {
         console.error('accept_pool_ride error:', error);
         toast.error(getFriendlyErrorMessage(error));
+        acceptLockRef.current = false;
         return;
       }
 
       const result = Array.isArray(data) ? data[0] : data;
       if (!result?.success) {
         toast.error(result?.message || 'Corrida já foi aceita por outro piloto');
-        setRides((prev) => prev.filter((r) => r.id !== rideId));
+        acceptLockRef.current = false;
         return;
       }
 
       toast.success('Passageiro adicionado ao barco!');
       await fetchActiveRides();
       navigate(`/pilot/ride/${rideId}`);
+      // Lock remains true after successful navigation - prevents any further attempts
     } catch (error) {
       console.error('Error accepting ride:', error);
       toast.error(getFriendlyErrorMessage(error));
-    } finally {
-      setAcceptingRideId(null);
+      acceptLockRef.current = false;
     }
   };
 
@@ -466,6 +493,11 @@ const PilotDashboard = () => {
                 </div>
               );
             })}
+          </div>
+        ) : isPilotOnline && rides.length === 0 && !ridesLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <p className="text-sm">Nenhuma corrida disponível no momento</p>
+            <p className="text-xs mt-1">Novas corridas aparecerão automaticamente</p>
           </div>
         ) : isPilotOnline ? (
           <div className="text-center py-12">

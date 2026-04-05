@@ -79,13 +79,16 @@ const PassengerHome = () => {
     };
 
     checkOngoingRide();
-    // Only poll while a ride may be active; once resolved to null, stop polling.
-    let stopPolling = false;
+    // Only poll while user is logged in and a ride may be active
     const interval = setInterval(() => {
-      if (!stopPolling) checkOngoingRide();
+      // Guard: skip poll if user logged out (stale closure protection)
+      if (!user?.id) {
+        clearInterval(interval);
+        return;
+      }
+      checkOngoingRide();
     }, 5000);
     return () => {
-      stopPolling = true;
       clearInterval(interval);
     };
   }, [user?.id, setOrigin, setDestination, setCurrentPilot, setRideStatus]);
@@ -135,6 +138,9 @@ const PassengerHome = () => {
                 alt="Perfil"
                 className="w-full h-full object-cover"
                 loading="lazy"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
               />
             ) : (
               <div className="w-full h-full bg-primary/10 flex items-center justify-center">

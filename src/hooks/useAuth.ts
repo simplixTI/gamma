@@ -169,6 +169,9 @@ export function useAuth() {
     const fullName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name || '';
     const email = currentUser?.email || '';
 
+    // Add small random delay to prevent simultaneous profile creation race condition
+    await new Promise(r => setTimeout(r, Math.random() * 1000));
+
     const { error: roleError } = await supabase.from('user_roles').insert({ user_id: userId, role: assignedRole });
     if (roleError) throw new Error(`Erro ao criar perfil: ${roleError.message}`);
 

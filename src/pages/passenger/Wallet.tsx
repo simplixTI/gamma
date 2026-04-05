@@ -386,6 +386,9 @@ const WalletPage = () => {
                         src={`data:image/png;base64,${pixData.qrCode}`}
                         alt="QR Code PIX"
                         className="w-48 h-48 rounded-xl mb-3"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
                       />
                     ) : (
                       <div className="w-48 h-48 bg-muted rounded-xl flex items-center justify-center mb-3">

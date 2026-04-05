@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ReferralDiscount {
@@ -13,6 +13,7 @@ export function useReferral(userId: string | undefined) {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [pendingDiscounts, setPendingDiscounts] = useState<ReferralDiscount[]>([]);
   const [loading, setLoading] = useState(false);
+  const usingDiscountRef = useRef<Set<string>>(new Set()); // Track discounts being used to prevent double-apply
 
   const fetchReferralData = useCallback(async () => {
     if (!userId) return;
@@ -129,18 +130,30 @@ export function useReferral(userId: string | undefined) {
 
   /**
    * Marks a discount as used on a ride. Throws on DB error so caller can handle.
+   * Uses optimistic locking to prevent concurrent application of the same discount.
    */
   const useDiscount = async (discountId: string, rideId: string) => {
-    const { error } = await supabase
-      .from('referral_discounts')
-      .update({ is_used: true, used_on_ride_id: rideId, used_at: new Date().toISOString() })
-      .eq('id', discountId)
-      .eq('is_used', false); // Extra guard: only mark unused discounts as used
-    if (error) {
-      console.error('[useReferral] Failed to consume discount:', error);
-      throw new Error('Erro ao aplicar desconto');
+    // Prevent double-use: if this discount is already being processed, exit early
+    if (usingDiscountRef.current.has(discountId)) {
+      throw new Error('Desconto já está sendo aplicado');
     }
-    setPendingDiscounts((prev) => prev.filter((d) => d.id !== discountId));
+
+    usingDiscountRef.current.add(discountId);
+    try {
+      const { error } = await supabase
+        .from('referral_discounts')
+        .update({ is_used: true, used_on_ride_id: rideId, used_at: new Date().toISOString() })
+        .eq('id', discountId)
+        .eq('is_used', false); // Atomic check: only update if not already used
+
+      if (error) {
+        console.error('[useReferral] Failed to consume discount:', error);
+        throw new Error('Erro ao aplicar desconto');
+      }
+      setPendingDiscounts((prev) => prev.filter((d) => d.id !== discountId));
+    } finally {
+      usingDiscountRef.current.delete(discountId);
+    }
   };
 
   const hasDiscount = pendingDiscounts.length > 0;

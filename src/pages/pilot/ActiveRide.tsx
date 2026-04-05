@@ -134,9 +134,7 @@ const ActiveRide = () => {
           setPhase('in_progress');
           // Seed timer from DB so elapsed time is correct on remount
           const startedAt = (data as DbRide & { started_at?: string }).started_at;
-          if (startedAt) {
-            setTimerStart((prev) => prev ?? new Date(startedAt));
-          }
+          setTimerStart((prev) => prev ?? new Date(startedAt || new Date()));
         } else if (data.status === 'completed') {
           setPhase('completed');
         }
@@ -194,12 +192,25 @@ const ActiveRide = () => {
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.warn('[ActiveRide] Realtime channel error');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('[ActiveRide] Realtime disconnected, retrying in 5s...');
+          // Attempt reconnection after delay
+          setTimeout(() => {
+            supabase.removeChannel(channel);
+            // Fallback: fetch fresh data to ensure UI stays in sync
+            fetchRide();
+          }, 5000);
         }
       });
 
+    // Fallback polling interval: fetch fresh ride data every 15s as backup
+    // Ensures pilot gets updates even if Realtime is down for extended period
+    const fallbackInterval = setInterval(() => {
+      fetchRide();
+    }, 15000);
+
     return () => {
+      clearInterval(fallbackInterval);
       supabase.removeChannel(channel);
     };
   }, [rideId, navigate, dbRideToRide, playSound]);
@@ -236,9 +247,11 @@ const ActiveRide = () => {
         newPhase = 'in_progress';
         break;
       case 'in_progress':
-        // Warn if payment is still pending — pilot can still complete
+        // BLOCK completion if payment is not paid
         if (paymentStatus !== 'paid') {
-          toast.warning('Pagamento ainda pendente. Você receberá assim que confirmado.', { duration: 6000 });
+          toast.error('Não é possível finalizar: pagamento pendente.');
+          setIsActionPending(false);
+          return;
         }
         newStatus = 'completed';
         newPhase = 'completed';

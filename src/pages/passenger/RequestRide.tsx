@@ -460,9 +460,9 @@ const RequestRide = () => {
 
       {/* Bottom section - Trip confirmation */}
       {canConfirm && !showOriginPicker && !showDestinationPicker && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-card rounded-t-3xl animate-slide-up" style={{ boxShadow: '0 -4px 32px rgba(0,0,0,0.15)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-card rounded-t-3xl animate-slide-up max-h-[90vh] overflow-y-auto" style={{ boxShadow: '0 -4px 32px rgba(0,0,0,0.15)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
           {/* Handle */}
-          <div className="flex justify-center pt-3 pb-1">
+          <div className="flex justify-center pt-3 pb-1 sticky top-0 bg-card rounded-t-3xl">
             <div className="w-10 h-1 bg-border rounded-full" />
           </div>
 

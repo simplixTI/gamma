@@ -28,7 +28,7 @@ export const usePilotLocations = (isActive: boolean) => {
     fetchLocations();
 
     const channel = supabase
-      .channel('pilot-locations-map')
+      .channel(`pilot-locations-map-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, (payload) => {
         if (payload.eventType === 'DELETE') {
           const old = payload.old as PilotLocation;

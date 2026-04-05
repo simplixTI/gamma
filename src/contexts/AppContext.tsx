@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { UserRole, RideStatus, Location, Pilot } from '@/types';
 import { locations } from '@/data/mockData';
 import { PRICE_TABLE, DEFAULT_PRICE, DISTANCE_TABLE, TIME_TABLE } from '@/data/pricingData';
@@ -98,26 +98,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => subscription.unsubscribe();
   }, []);
 
-  const calculateDistance = () => {
+  const calculateDistance = useCallback(() => {
     if (!origin || !destination) return 0;
     if (origin.id === destination.id) return 0;
     // Real haversine distance in km from pre-computed matrix (meters → km)
     const meters = DISTANCE_TABLE[origin.id]?.[destination.id] ?? 0;
     return Math.round(meters / 100) / 10; // round to 1 decimal km
-  };
+  }, [origin, destination]);
 
-  const calculateTime = () => {
+  const calculateTime = useCallback(() => {
     if (!origin || !destination) return 0;
     if (origin.id === destination.id) return 0;
     // Real travel time in minutes from pre-computed matrix (boat ~20 km/h + docking)
     return TIME_TABLE[origin.id]?.[destination.id] ?? 2;
-  };
+  }, [origin, destination]);
 
-  const calculatePrice = (): number => {
+  const calculatePrice = useCallback((): number => {
     if (!origin || !destination) return 0;
     if (origin.id === destination.id) return 0;
     return PRICE_TABLE[origin.id]?.[destination.id] ?? DEFAULT_PRICE;
-  };
+  }, [origin, destination]);
 
   const contextValue = useMemo(() => ({
     userRole,
@@ -137,7 +137,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     calculatePrice,
     calculateDistance,
     calculateTime,
-  }), [userRole, rideStatus, origin, destination, currentPilot, isPilotOnline, passengerCount]);
+  }), [userRole, rideStatus, origin, destination, currentPilot, isPilotOnline, passengerCount, calculatePrice, calculateDistance, calculateTime]);
 
   return (
     <AppContext.Provider value={contextValue}>

@@ -22,6 +22,7 @@ const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number)
 export const usePilotGPS = ({ rideId, pilotId, isActive }: UsePilotGPSOptions) => {
   const watchIdRef = useRef<number | null>(null);
   const lastPersistedRef = useRef<{ lat: number; lng: number } | null>(null);
+  const activeRideRef = useRef<string | undefined>(undefined);
 
   const updatePilotPosition = useCallback(async (lat: number, lng: number) => {
     const updates: Promise<unknown>[] = [];
@@ -56,6 +57,9 @@ export const usePilotGPS = ({ rideId, pilotId, isActive }: UsePilotGPSOptions) =
   }, [rideId, pilotId]);
 
   useEffect(() => {
+    // Track current ride status for cleanup
+    activeRideRef.current = rideId;
+
     if (!isActive || (!rideId && !pilotId)) {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -127,9 +131,10 @@ export const usePilotGPS = ({ rideId, pilotId, isActive }: UsePilotGPSOptions) =
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      // Mark pilot as unavailable when going offline.
+      // Mark pilot as unavailable when going offline, but ONLY if no active ride in progress.
+      // During active rides, keep is_available=true even if GPS hook unmounts temporarily.
       // fetch with keepalive=true fires even during page unload / app backgrounding.
-      if (pilotId) {
+      if (pilotId && !activeRideRef.current) {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
         // Best-effort: use Supabase SDK (works during normal unmount)

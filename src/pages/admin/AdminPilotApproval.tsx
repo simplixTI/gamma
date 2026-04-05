@@ -79,7 +79,7 @@ const AdminPilotApproval = () => {
     if (docUrls[path]) return docUrls[path];
     const { data } = await supabase.storage
       .from('pilot-documents')
-      .createSignedUrl(path, 3600);
+      .createSignedUrl(path, 300);
     if (data?.signedUrl) {
       setDocUrls(prev => ({ ...prev, [path]: data.signedUrl }));
       return data.signedUrl;
