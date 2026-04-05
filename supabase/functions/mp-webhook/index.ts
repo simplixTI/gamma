@@ -113,13 +113,13 @@ async function handleRidePayment(
     return ok({ status: mpPayment.status });
   }
 
-  // Atomic claim: transition pending/in_process → processing.
-  // Two simultaneous webhooks both attempt this; only one gets count > 0.
+  // Atomic claim: transition pending/in_process/processing → processing.
+  // Include 'processing' to recover from previous crashed webhook attempts.
   const { count: claimed } = await supabase
     .from('payments')
     .update({ status: 'processing' })
     .eq('mp_payment_id', mpPaymentId)
-    .in('status', ['pending', 'in_process'])
+    .in('status', ['pending', 'in_process', 'processing'])
     .select('id', { count: 'exact', head: true });
 
   if (!claimed || claimed === 0) {
@@ -130,10 +130,17 @@ async function handleRidePayment(
       .maybeSingle();
 
     if (existingPayment?.status === 'completed') {
+      // Already completed — also ensure ride is marked paid
+      const completedRideId = externalRef.startsWith('ride-') ? externalRef.slice(5) : '';
+      if (completedRideId) {
+        await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', completedRideId);
+      }
       return ok({ success: true, type: 'ride', duplicate: true });
     }
+    console.error('Payment not claimable. Current status:', existingPayment?.status, 'mpPaymentId:', mpPaymentId);
     return ok({ error: 'payment_not_claimable', paymentStatus: existingPayment?.status ?? 'not_found' });
   }
+  console.log('Payment claimed successfully. rideId:', rideId);
 
   // Verify ride exists and amount matches
   console.log('Verifying ride:', rideId, 'mpPaymentId:', mpPaymentId);
