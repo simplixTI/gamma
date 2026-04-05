@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://gamma.app.br';
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? 'https://www.gamma.app.br';
 // NOTE: Set ALLOWED_ORIGIN env var in Supabase secrets for production
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
