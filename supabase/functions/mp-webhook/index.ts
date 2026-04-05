@@ -329,11 +329,18 @@ Deno.serve(async (req) => {
     const mpPayment = await mpRes.json();
     const externalRef = String(mpPayment.external_reference || '');
 
-    console.log('MP payment status:', mpPayment.status);
+    console.log('MP payment status:', mpPayment.status, '| external_reference:', externalRef, '| mpPaymentId:', mpPaymentId);
 
     // Route by external_reference prefix
     if (externalRef.startsWith('ride-')) {
-      return await handleRidePayment(supabase, mpPayment, mpPaymentId);
+      try {
+        const result = await handleRidePayment(supabase, mpPayment, mpPaymentId);
+        console.log('handleRidePayment completed successfully');
+        return result;
+      } catch (rideErr) {
+        console.error('handleRidePayment CRASHED:', String(rideErr));
+        return ok({ error: 'ride_handler_crashed', detail: String(rideErr) });
+      }
     } else if (externalRef.startsWith('wallet-')) {
       return await handleWalletTopup(supabase, mpPayment, mpPaymentId);
     } else {
