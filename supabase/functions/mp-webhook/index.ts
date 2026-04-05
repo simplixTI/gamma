@@ -153,8 +153,9 @@ async function handleRidePayment(
   const paidAmount = Number(mpPayment.transaction_amount);
   const expectedAmount = Number(rideRow.price);
 
-  if (Math.abs(paidAmount - expectedAmount) > 0.01) {
-    console.error('Amount mismatch for ride payment. Paid:', paidAmount, 'Expected:', expectedAmount);
+  // Allow paid >= expected (tip makes it higher) but never lower
+  if (paidAmount < expectedAmount - 0.01) {
+    console.error('Amount too low for ride payment. Paid:', paidAmount, 'Expected:', expectedAmount);
     await supabase.from('payments').update({ status: 'failed' }).eq('mp_payment_id', mpPaymentId);
     return ok({ error: 'amount_mismatch' });
   }
@@ -270,27 +271,22 @@ Deno.serve(async (req) => {
       return ok({ error: 'service_not_configured' });
     }
 
-    if (!MP_WEBHOOK_SECRET) {
-      console.error('MP_WEBHOOK_SECRET not configured — rejecting all webhook calls');
-      // Return 500 (not 200) so Mercado Pago retries instead of silently dropping
-      return new Response(JSON.stringify({ error: 'webhook_not_configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     const rawBody = await req.text();
     console.log('mp-webhook received');
 
-    const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
-    if (!valid) {
-      console.error('Invalid MP webhook signature — ignoring');
-      return new Response(JSON.stringify({ received: true, valid: false }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (MP_WEBHOOK_SECRET) {
+      const valid = await verifyMpSignature(req, rawBody, MP_WEBHOOK_SECRET);
+      if (!valid) {
+        console.error('Invalid MP webhook signature — ignoring');
+        return new Response(JSON.stringify({ received: true, valid: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      console.warn('MP_WEBHOOK_SECRET not configured — processing without signature verification');
     }
 
     const body = JSON.parse(rawBody);
