@@ -180,16 +180,34 @@ async function handleRidePayment(
   }
   console.log('Payment marked completed for mp_payment_id:', mpPaymentId);
 
-  // Update ride payment status
-  const { error: rideUpdateErr } = await supabase
-    .from('rides')
-    .update({ payment_status: 'paid' })
-    .eq('id', rideId);
+  // Update ride payment status with verification and retry logic
+  let rideUpdated = false;
+  for (let attempt = 0; attempt < 3 && !rideUpdated; attempt++) {
+    const { error: rideUpdateErr, count } = await supabase
+      .from('rides')
+      .update({ payment_status: 'paid' })
+      .eq('id', rideId)
+      .neq('payment_status', 'paid')
+      .select('id', { count: 'exact', head: true });
 
-  if (rideUpdateErr) {
-    console.error('Failed to update ride payment_status:', rideUpdateErr);
+    if (!rideUpdateErr && (count ?? 0) > 0) {
+      rideUpdated = true;
+      console.log('Ride', rideId, 'payment_status set to paid (attempt', attempt + 1, ')');
+    } else if (rideUpdateErr) {
+      console.error('Ride update attempt', attempt + 1, 'failed:', rideUpdateErr);
+    } else {
+      // Check if already paid
+      const { data: check } = await supabase.from('rides').select('payment_status').eq('id', rideId).maybeSingle();
+      if (check?.payment_status === 'paid') {
+        rideUpdated = true;
+        console.log('Ride', rideId, 'already paid');
+      }
+    }
   }
-  console.log('Ride', rideId, 'payment_status set to paid');
+
+  if (!rideUpdated) {
+    console.error('CRITICAL: Failed to set ride payment_status to paid after 3 attempts. rideId:', rideId);
+  }
 
   return ok({ success: true, type: 'ride', rideId });
 }
@@ -287,6 +305,8 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+    console.log('Using service role:', !!SUPABASE_SERVICE_ROLE_KEY);
+
     if (!MP_ACCESS_TOKEN) {
       console.error('MP_ACCESS_TOKEN not configured');
       return ok({ error: 'service_not_configured' });
@@ -312,8 +332,8 @@ Deno.serve(async (req) => {
 
     const body = JSON.parse(rawBody);
 
-    if (body.type !== 'payment') {
-      console.log('Ignoring non-payment event:', body.type);
+    if (body.type !== 'payment' && body.action !== 'payment.updated') {
+      console.log('Ignoring non-payment event:', body.type || body.action);
       return ok();
     }
 
@@ -337,6 +357,12 @@ Deno.serve(async (req) => {
     const externalRef = String(mpPayment.external_reference || '');
 
     console.log('MP payment status:', mpPayment.status, '| external_reference:', externalRef, '| mpPaymentId:', mpPaymentId);
+
+    // Guard: skip non-final MP payment statuses to prevent wasted processing
+    if (mpPayment.status === 'pending' || mpPayment.status === 'in_process') {
+      console.log('Skipping non-final MP status:', mpPayment.status);
+      return ok({ status: mpPayment.status, skipped: true });
+    }
 
     // Route by external_reference prefix
     if (externalRef.startsWith('ride-')) {

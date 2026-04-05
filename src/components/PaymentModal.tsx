@@ -96,7 +96,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [showNewCardForm, setShowNewCardForm] = useState(false);
   const [saveCard, setSaveCard] = useState(false);
 
-  const totalAmount = amount + tip;
+  // Resolved amount fetched from DB if needed
+  const [resolvedAmount, setResolvedAmount] = useState(0);
+
+  const totalAmount = (resolvedAmount || amount) + tip;
 
   const loadSavedCards = useCallback(async () => {
     if (!user?.id) return;
@@ -128,6 +131,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setCard({ number: '', name: '', expiry: '', cvv: '' });
       setSavedCardCvv('');
       setShowNewCardForm(false);
+      setResolvedAmount(0);
     }
   }, [isOpen]);
 
@@ -142,6 +146,41 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // Fetch ride price from DB if amount is 0 (fixes private browsing issue)
+  useEffect(() => {
+    if (!isOpen || !rideId) return;
+
+    // If amount is already provided and > 0, use it
+    if (amount > 0) {
+      setResolvedAmount(amount);
+      return;
+    }
+
+    // Otherwise fetch price from DB
+    const fetchRidePrice = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('rides')
+          .select('price')
+          .eq('id', rideId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error fetching ride price:', error);
+          return;
+        }
+
+        if (data?.price) {
+          setResolvedAmount(Number(data.price));
+        }
+      } catch (err) {
+        console.error('Error fetching ride price:', err);
+      }
+    };
+
+    fetchRidePrice();
+  }, [isOpen, rideId, amount]);
 
   useEffect(() => {
     if (isOpen && rideId && tab === 'pix') {
@@ -161,7 +200,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const createPixPayment = async () => {
     if (pixCreationInProgressRef.current) return;
 
-    // Guard: prevent PIX generation when amount is 0
+    // Guard: prevent PIX generation when resolved amount is still 0
     if (totalAmount <= 0) {
       setPixError('Valor da corrida não disponível. Feche e tente novamente.');
       setPixLoading(false);
