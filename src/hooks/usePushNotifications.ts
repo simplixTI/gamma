@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { isNativeMobile } from '@/capacitor';
 
 // Dynamic import to avoid crashing the web build
@@ -12,8 +12,14 @@ async function getPushPlugin() {
 }
 
 export function usePushNotifications(userId?: string) {
+  const listenersRegisteredRef = useRef(false);
+
   useEffect(() => {
     if (!isNativeMobile || !userId) return;
+
+    // Prevent duplicate listener registration from rapid mount/unmount cycles
+    if (listenersRegisteredRef.current) return;
+    listenersRegisteredRef.current = true;
 
     let cleanup: (() => void) | undefined;
     let cancelled = false;
