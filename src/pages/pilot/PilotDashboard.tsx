@@ -97,6 +97,7 @@ const PilotDashboard = () => {
       .from('rides')
       .select('id, status, passenger_device_id, passenger_name, passenger_count, pilot_id, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, created_at')
       .eq('status', 'pending')
+      .eq('payment_status', 'paid')
       .gte('created_at', cutoff)
       .order('created_at', { ascending: false });
 
@@ -153,7 +154,10 @@ const PilotDashboard = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
         (payload) => {
-          const newRide = dbRideToRide(payload.new as DbRide);
+          const nr = payload.new as DbRide;
+          // Only show rides with confirmed payment
+          if (nr.payment_status !== 'paid') return;
+          const newRide = dbRideToRide(nr);
           setRides((prev) => [newRide, ...prev]);
           playNewRideSoundRef.current();
           notifyNewRideRequestRef.current(newRide.passengerName, newRide.origin.name, newRide.price);
@@ -164,6 +168,16 @@ const PilotDashboard = () => {
         { event: 'UPDATE', schema: 'public', table: 'rides' },
         (payload) => {
           const updatedRide = payload.new as DbRide;
+          // Ride just got paid — add to list if pending
+          if (updatedRide.status === 'pending' && updatedRide.payment_status === 'paid') {
+            const paidRide = dbRideToRide(updatedRide);
+            setRides((prev) => {
+              if (prev.some((r) => r.id === paidRide.id)) return prev;
+              return [paidRide, ...prev];
+            });
+            playNewRideSoundRef.current();
+            notifyNewRideRequestRef.current(paidRide.passengerName, paidRide.origin.name, paidRide.price);
+          }
           if (updatedRide.status !== 'pending') {
             setRides((prev) => prev.filter((r) => r.id !== updatedRide.id));
           }
