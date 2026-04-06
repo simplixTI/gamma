@@ -65,7 +65,7 @@ export const cancelRide = async (rideId: string, userId: string) => {
 export const getCurrentRide = async (userId: string) => {
   const { data, error } = await supabase
     .from('rides')
-    .select('id, status, pilot_id, pilot_name, pilot_phone, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, passenger_count, created_at')
+    .select('id, status, payment_status, pilot_id, pilot_name, pilot_phone, origin_name, origin_address, origin_lat, origin_lng, origin_pier_id, destination_name, destination_address, destination_lat, destination_lng, destination_pier_id, price, estimated_time, passenger_count, created_at')
     .or(`passenger_user_id.eq.${userId},passenger_device_id.eq.${userId}`)
     .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
     .order('created_at', { ascending: false })

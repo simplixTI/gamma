@@ -68,11 +68,25 @@ const PassengerHome = () => {
             phone: ride.pilot_phone || '',
           });
         }
-        if (ride.status === 'pending') setRideStatus('searching');
-        else if (ride.status === 'accepted') setRideStatus('matched');
-        else if (ride.status === 'pilot_arriving') setRideStatus('arriving');
-        else if (ride.status === 'in_progress') setRideStatus('in_progress');
-        else setRideStatus('idle');
+        // Auto-redirect to the correct screen based on ride state
+        if (ride.status === 'pending') {
+          if ((ride as any).payment_status === 'paid') {
+            // Paid but waiting for pilot — go to searching
+            navigate('/passenger/searching', { state: { rideId: ride.id } });
+            return;
+          }
+          // Not paid yet — go to request page to show payment modal
+          setRideStatus('searching');
+          navigate('/passenger/request', { state: { rideId: ride.id } });
+          return;
+        } else if (ride.status === 'accepted' || ride.status === 'pilot_arriving') {
+          navigate('/passenger/tracking', { state: { rideId: ride.id } });
+          return;
+        } else if (ride.status === 'in_progress') {
+          navigate('/passenger/in-ride', { state: { rideId: ride.id } });
+          return;
+        }
+        setRideStatus('idle');
       } catch (error) {
         console.error('Erro ao buscar corrida:', error);
       }
