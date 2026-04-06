@@ -152,7 +152,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 
   // Rota pela água: piloto -> embarque (via canal)
   useEffect(() => {
-    if (!isLoaded || !pilotPosition || !origin) return;
+    if (!isLoaded || !pilotPosition || !origin?.coordinates?.length) return;
     const key = pilotPosition.lat.toFixed(5) + "," + pilotPosition.lng.toFixed(5) + "|" + origin.coordinates[1].toFixed(5) + "," + origin.coordinates[0].toFixed(5);
     if (key === lastPilotKey.current) return;
     lastPilotKey.current = key;
@@ -177,7 +177,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 
   // Rota pela água: embarque -> destino (via canal)
   useEffect(() => {
-    if (!isLoaded || !origin || !destination) return;
+    if (!isLoaded || !origin?.coordinates?.length || !destination?.coordinates?.length) return;
     const key = origin.coordinates[1].toFixed(5) + "," + origin.coordinates[0].toFixed(5) + "|" + destination.coordinates[1].toFixed(5) + "," + destination.coordinates[0].toFixed(5);
     if (key === lastRouteKey.current) return;
     lastRouteKey.current = key;
@@ -203,7 +203,7 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 
   // Auto-fit map to show origin + destination + pilot when route is set
   useEffect(() => {
-    if (!map || !origin || !destination) return;
+    if (!map || !origin?.coordinates?.length || !destination?.coordinates?.length) return;
     const bounds = new google.maps.LatLngBounds();
     bounds.extend({ lat: origin.coordinates[1], lng: origin.coordinates[0] });
     bounds.extend({ lat: destination.coordinates[1], lng: destination.coordinates[0] });
