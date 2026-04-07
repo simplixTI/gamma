@@ -203,6 +203,11 @@ const SearchingPilot = () => {
             navigatedToTrackingRef.current = false;
             return; // pilot accepted — don't cancel
           }
+          // Don't cancel if payment is confirmed (ride is valid, just waiting for pilot)
+          if (freshRide && (freshRide as any).payment_status === 'paid') {
+            navigatedToTrackingRef.current = false;
+            return;
+          }
         } catch (err) {
           console.error('Error checking ride status before auto-cancel:', err);
         }
