@@ -590,7 +590,7 @@ const RequestRide = () => {
       {/* Payment Modal */}
       <PaymentModal
         isOpen={showPaymentModal}
-        onClose={handlePaymentCancel}
+        onClose={() => setShowPaymentModal(false)}
         onPaymentComplete={handlePaymentComplete}
         rideId={currentRideId || ''}
         amount={activeRidePrice ?? totalPrice}
