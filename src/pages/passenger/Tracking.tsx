@@ -383,8 +383,8 @@ const Tracking = () => {
       <div className="absolute inset-0">
         <GoogleMapView 
           showBoats={false} 
-          origin={origin}
-          destination={destination}
+          origin={origin?.coordinates?.length ? origin : undefined}
+          destination={destination?.coordinates?.length ? destination : undefined}
           pilotPosition={pilotPosition}
           animateBoatOnRoute={true}
           onRouteInfo={handleRouteInfo}

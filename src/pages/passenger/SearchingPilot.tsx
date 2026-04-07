@@ -277,10 +277,10 @@ const SearchingPilot = () => {
 
       {/* Map Background */}
       <div className="absolute inset-0">
-        <GoogleMapView 
-          showBoats={true} 
-          origin={origin}
-          destination={destination}
+        <GoogleMapView
+          showBoats={true}
+          origin={origin?.coordinates?.length ? origin : undefined}
+          destination={destination?.coordinates?.length ? destination : undefined}
         />
       </div>
 
