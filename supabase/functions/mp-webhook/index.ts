@@ -113,13 +113,14 @@ async function handleRidePayment(
     return ok({ status: mpPayment.status });
   }
 
-  // Atomic claim: transition pending/in_process/processing → processing.
-  // Include 'processing' to recover from previous crashed webhook attempts.
+  // Atomic claim: transition pending/in_process → processing (once only).
+  // Do NOT include 'processing' in the IN list — prevents race condition where
+  // two concurrent calls both claim the payment and interfere with each other.
   const { count: claimed } = await supabase
     .from('payments')
     .update({ status: 'processing' })
     .eq('mp_payment_id', mpPaymentId)
-    .in('status', ['pending', 'in_process', 'processing'])
+    .in('status', ['pending', 'in_process'])
     .select('id', { count: 'exact', head: true });
 
   if (!claimed || claimed === 0) {
@@ -207,6 +208,32 @@ async function handleRidePayment(
 
   if (!rideUpdated) {
     console.error('CRITICAL: Failed to set ride payment_status to paid after 3 attempts. rideId:', rideId);
+  }
+
+  // Final verification — confirm both updates actually persisted
+  const { data: finalPayment } = await supabase
+    .from('payments')
+    .select('status')
+    .eq('mp_payment_id', mpPaymentId)
+    .maybeSingle();
+
+  const { data: finalRide } = await supabase
+    .from('rides')
+    .select('payment_status')
+    .eq('id', rideId)
+    .maybeSingle();
+
+  console.log('FINAL STATE — payment:', finalPayment?.status, 'ride:', finalRide?.payment_status, 'rideId:', rideId);
+
+  if (finalPayment?.status !== 'completed' || finalRide?.payment_status !== 'paid') {
+    console.error('VERIFICATION FAILED — payment:', finalPayment?.status, 'ride:', finalRide?.payment_status);
+    // Force update as last resort
+    if (finalPayment?.status !== 'completed') {
+      await supabase.from('payments').update({ status: 'completed', paid_at: new Date().toISOString() }).eq('mp_payment_id', mpPaymentId);
+    }
+    if (finalRide?.payment_status !== 'paid') {
+      await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
+    }
   }
 
   return ok({ success: true, type: 'ride', rideId });

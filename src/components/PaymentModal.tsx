@@ -281,7 +281,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     pixConfirmInProgressRef.current = true;
     setCheckingPayment(true);
     try {
-      // Check ride payment_status (more reliable than payments table due to RLS)
+      // Primary check: ride payment_status
       const { data: ride } = await supabase
         .from('rides')
         .select('payment_status')
@@ -295,9 +295,31 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           onPaymentComplete?.();
           onClose();
         }, 1500);
-      } else {
-        toast.info('Pagamento ainda não detectado. Aguarde alguns segundos e tente novamente.');
+        return;
       }
+
+      // Fallback check: payment status directly (in case ride update failed)
+      if (pixData?.paymentId) {
+        const { data: payment } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', pixData.paymentId)
+          .maybeSingle();
+
+        if (payment?.status === 'completed') {
+          // Payment confirmed but ride not updated — force update and proceed
+          await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
+          toast.success('Pagamento confirmado!');
+          setPixConfirmed(true);
+          setTimeout(() => {
+            onPaymentComplete?.();
+            onClose();
+          }, 1500);
+          return;
+        }
+      }
+
+      toast.info('Pagamento ainda não detectado. Aguarde alguns segundos e tente novamente.');
     } catch (err) {
       console.error('Error checking payment:', err);
       toast.error('Erro ao verificar pagamento. Tente novamente.');
@@ -315,6 +337,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
     const interval = setInterval(async () => {
       try {
+        // Primary check: ride payment status
         const { data: ride } = await supabase
           .from('rides')
           .select('payment_status')
@@ -329,6 +352,28 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             onPaymentComplete?.();
             onClose();
           }, 2000);
+          return;
+        }
+
+        // Fallback check: payment status directly (in case ride update failed)
+        if (pixData?.paymentId) {
+          const { data: payment } = await supabase
+            .from('payments')
+            .select('status')
+            .eq('id', pixData.paymentId)
+            .maybeSingle();
+
+          if (payment?.status === 'completed') {
+            // Payment confirmed but ride not updated — force update and proceed
+            await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
+            clearInterval(interval);
+            setAwaitingPayment(false);
+            setPixConfirmed(true);
+            setTimeout(() => {
+              onPaymentComplete?.();
+              onClose();
+            }, 2000);
+          }
         }
       } catch {
         // silent — will retry next interval
