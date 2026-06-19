@@ -40,6 +40,8 @@ const ActiveRide = () => {
   const [timer, setTimer] = useState(0);
   // Prevent duplicate navigation when realtime and local action race
   const navigatedAwayRef = useRef(false);
+  // Prevent duplicate "Pagamento confirmado" toast — realtime fires for any UPDATE
+  const paymentToastShownRef = useRef(false);
   const [ride, setRide] = useState<Ride | null>(null);
   const [passengerCount, setPassengerCount] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -141,8 +143,11 @@ const ActiveRide = () => {
         // Check payment status
         if ((data as DbRide).payment_status === 'paid') {
           setPaymentStatus('paid');
+          // Already paid on load — don't show toast on next realtime update
+          paymentToastShownRef.current = true;
         } else if ((data as DbRide).payment_status === 'failed') {
           setPaymentStatus('failed');
+          paymentToastShownRef.current = true;
         }
       }
       setLoading(false);
@@ -162,13 +167,15 @@ const ActiveRide = () => {
           const updatedRide = payload.new as DbRide & { started_at?: string };
           setRide(dbRideToRide(updatedRide));
 
-          // Payment update
-          if (updatedRide.payment_status === 'paid') {
+          // Payment update — fire toast only once per ride, not on every UPDATE
+          if (updatedRide.payment_status === 'paid' && !paymentToastShownRef.current) {
             setPaymentStatus('paid');
+            paymentToastShownRef.current = true;
             playSound();
             toast.success('Pagamento confirmado!');
-          } else if (updatedRide.payment_status === 'failed') {
+          } else if (updatedRide.payment_status === 'failed' && !paymentToastShownRef.current) {
             setPaymentStatus('failed');
+            paymentToastShownRef.current = true;
             toast.error('Pagamento falhou. O passageiro precisa tentar novamente.');
           }
 

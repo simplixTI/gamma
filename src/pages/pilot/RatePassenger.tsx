@@ -73,14 +73,6 @@ const RatePassenger = () => {
 
   const handleSkip = () => navigate('/pilot');
 
-  if (loadingRide) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   // Se passenger_user_id for null (corrida legada), pular avaliação via useEffect
   // para não chamar navigate() durante a fase de render
   useEffect(() => {
@@ -88,6 +80,14 @@ const RatePassenger = () => {
       navigate('/pilot', { replace: true });
     }
   }, [loadingRide, passengerUserId, navigate]);
+
+  if (loadingRide) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!loadingRide && !passengerUserId) return null;
 

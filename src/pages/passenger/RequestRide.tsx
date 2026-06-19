@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Clock, Navigation, MapPin, Users, Tag, QrCode, CreditCard, Search } from 'lucide-react';
+import { ArrowLeft, Clock, Navigation, MapPin, Users, Tag, QrCode, CreditCard, Search, Wallet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import GoogleMapView from '@/components/GoogleMapView';
@@ -45,6 +45,102 @@ const RequestRide = () => {
   const [nearestPierId, setNearestPierId] = useState<string | null>(null);
   const [isRestoringRide, setIsRestoringRide] = useState(false);
   const [activeRidePrice, setActiveRidePrice] = useState<number | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [payingWithWallet, setPayingWithWallet] = useState(false);
+
+  // Load passenger wallet balance to offer "Pay with balance" option
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('passenger_profiles')
+      .select('wallet_balance')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setWalletBalance(Number(data?.wallet_balance ?? 0));
+      });
+  }, [user?.id]);
+
+  const handleConfirmWithWallet = async () => {
+    if (!origin || !destination || !user) {
+      toast.error('Dados incompletos');
+      return;
+    }
+    const validation = validatePassengerProfile(passengerProfile);
+    if (!validation.isValid) {
+      setMissingFields(validation.missingFields);
+      setShowProfileModal(true);
+      return;
+    }
+    setPayingWithWallet(true);
+    try {
+      // Reuse existing pending ride or create one
+      let rideIdToPay: string | null = currentRideId;
+      if (!rideIdToPay) {
+        const { data: activeRide } = await supabase
+          .from('rides')
+          .select('id')
+          .eq('passenger_user_id', user.id)
+          .in('status', ['pending', 'accepted', 'pilot_arriving', 'in_progress'])
+          .maybeSingle();
+        if (activeRide) {
+          rideIdToPay = activeRide.id;
+        } else {
+          const { data: rideData, error: insertErr } = await supabase
+            .from('rides')
+            .insert({
+              origin_name: origin.name,
+              origin_address: origin.address,
+              origin_lat: origin.coordinates[1],
+              origin_lng: origin.coordinates[0],
+              origin_pier_id: origin.id,
+              destination_name: destination.name,
+              destination_address: destination.address,
+              destination_lat: destination.coordinates[1],
+              destination_lng: destination.coordinates[0],
+              destination_pier_id: destination.id,
+              price: totalPrice,
+              passenger_count: passengerCount,
+              estimated_time: time,
+              passenger_device_id: user.id,
+              passenger_user_id: user.id,
+              passenger_name: passengerProfile?.full_name,
+              passenger_phone: passengerProfile?.phone,
+              status: 'pending',
+              payment_status: 'pending',
+            })
+            .select('id')
+            .single();
+          if (insertErr) throw insertErr;
+          rideIdToPay = rideData.id;
+        }
+      }
+
+      const { data: result, error: payErr } = await supabase.rpc('pay_ride_with_wallet', {
+        p_user_id: user.id,
+        p_ride_id: rideIdToPay,
+        p_amount: totalPrice,
+        p_description: `Corrida de ${origin.name} para ${destination.name}`,
+      });
+      if (payErr) throw payErr;
+      const r = result as { success?: boolean; error?: string; balance?: number } | null;
+      if (!r?.success) {
+        if (r?.error === 'insufficient_balance') {
+          toast.error(`Saldo insuficiente. Você tem R$ ${(r.balance ?? 0).toFixed(2).replace('.', ',')}.`);
+        } else {
+          toast.error(r?.error || 'Erro ao pagar com saldo');
+        }
+        return;
+      }
+      setRideStatus('searching');
+      navigate('/passenger/searching', { state: { confirmedPrice: totalPrice } });
+    } catch (err) {
+      console.error('Pay with wallet error:', err);
+      toast.error(getFriendlyErrorMessage(err));
+    } finally {
+      setPayingWithWallet(false);
+    }
+  };
 
   // Restore ride data if navigating from "Retomar" button with rideId
   useEffect(() => {
@@ -327,7 +423,20 @@ const RequestRide = () => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => navigate('/passenger')}
+          onClick={async () => {
+            const rideIdToCancel = currentRideId ?? (location.state as any)?.rideId;
+            if (rideIdToCancel) {
+              await supabase
+                .from('rides')
+                .update({ status: 'cancelled' })
+                .eq('id', rideIdToCancel)
+                .eq('payment_status', 'pending');
+            }
+            setOrigin(null);
+            setDestination(null);
+            setCurrentRideId(null);
+            navigate('/passenger');
+          }}
           className="bg-card shadow-md rounded-full"
           aria-label="Voltar"
         >
@@ -554,13 +663,58 @@ const RequestRide = () => {
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground text-center font-medium">Como você prefere pagar?</p>
+
+                {walletBalance !== null && walletBalance >= totalPrice && (
+                  <>
+                    <Button
+                      variant="default"
+                      size="lg"
+                      fullWidth
+                      onClick={handleConfirmWithWallet}
+                      disabled={payingWithWallet || isCreating}
+                      className="h-16 text-sm font-bold rounded-2xl gap-3 animate-fade-in"
+                    >
+                      {payingWithWallet ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Pagando com saldo...
+                        </>
+                      ) : (
+                        <>
+                          <Wallet className="w-5 h-5 shrink-0" />
+                          <div className="flex flex-col items-start">
+                            <span>Pagar R$ {totalPrice.toFixed(2).replace('.', ',')} com saldo</span>
+                            <span className="text-[10px] opacity-70 font-normal">
+                              Saldo disponível: R$ {walletBalance.toFixed(2).replace('.', ',')}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest py-1">
+                      — ou pague de outra forma —
+                    </p>
+                  </>
+                )}
+
+                {walletBalance !== null && walletBalance > 0 && walletBalance < totalPrice && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/passenger/wallet')}
+                    className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1.5"
+                  >
+                    <Wallet className="w-3 h-3" />
+                    Saldo: R$ {walletBalance.toFixed(2).replace('.', ',')} · Adicionar →
+                  </button>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <Button
-                    variant="default"
+                    variant={walletBalance !== null && walletBalance >= totalPrice ? 'outline' : 'default'}
                     size="lg"
                     fullWidth
                     onClick={() => handleConfirm('pix')}
-                    disabled={isCreating}
+                    disabled={isCreating || payingWithWallet}
                     className="h-12 text-sm font-bold rounded-2xl gap-2"
                   >
                     <QrCode className="w-4 h-4 shrink-0" />
@@ -571,7 +725,7 @@ const RequestRide = () => {
                     size="lg"
                     fullWidth
                     onClick={() => handleConfirm('card')}
-                    disabled={isCreating}
+                    disabled={isCreating || payingWithWallet}
                     className="h-12 text-sm font-bold rounded-2xl gap-2"
                   >
                     <CreditCard className="w-4 h-4 shrink-0" />

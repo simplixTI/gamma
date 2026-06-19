@@ -12,6 +12,7 @@ const PAGE_SIZE = 50;
 
 interface PassengerRow {
   id: string;
+  user_id: string;
   full_name: string;
   email: string;
   phone: string;
@@ -22,6 +23,7 @@ interface PassengerRow {
 
 interface PilotRow {
   id: string;
+  user_id: string;
   full_name: string;
   email: string;
   phone: string;
@@ -119,7 +121,7 @@ const AdminUsers = () => {
       supabase.from('passenger_profiles').select('count', { count: 'exact', head: true }),
       supabase
         .from('passenger_profiles')
-        .select('id, full_name, email, phone, cpf, rating, created_at')
+        .select('id, user_id, full_name, email, phone, cpf, rating, created_at')
         .order('created_at', { ascending: false })
         .range(from, to),
     ]);
@@ -136,7 +138,7 @@ const AdminUsers = () => {
       supabase.from('pilot_profiles').select('count', { count: 'exact', head: true }),
       supabase
         .from('pilot_profiles')
-        .select('id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, created_at')
+        .select('id, user_id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, created_at')
         .order('created_at', { ascending: false })
         .range(from, to),
     ]);
@@ -249,9 +251,10 @@ const AdminUsers = () => {
 
   const handleDeletePassenger = async (p: PassengerRow) => {
     setDeletingPassengerId(p.id);
-    const { error } = await supabase.from('passenger_profiles').delete().eq('id', p.id);
-    if (error) {
-      toast.error('Erro ao excluir passageiro: ' + error.message);
+    const { data, error } = await supabase.rpc('admin_delete_user', { p_user_id: p.user_id });
+    const result = data as { success?: boolean; error?: string } | null;
+    if (error || !result?.success) {
+      toast.error('Erro ao excluir passageiro: ' + (error?.message ?? result?.error ?? 'desconhecido'));
     } else {
       setPassengers(prev => prev.filter(r => r.id !== p.id));
       setPassengerTotal(t => t - 1);
@@ -329,9 +332,10 @@ const AdminUsers = () => {
 
   const handleDeletePilot = async (p: PilotRow) => {
     setDeletingPilotId(p.id);
-    const { error } = await supabase.from('pilot_profiles').delete().eq('id', p.id);
-    if (error) {
-      toast.error('Erro ao excluir piloto: ' + error.message);
+    const { data, error } = await supabase.rpc('admin_delete_user', { p_user_id: p.user_id });
+    const result = data as { success?: boolean; error?: string } | null;
+    if (error || !result?.success) {
+      toast.error('Erro ao excluir piloto: ' + (error?.message ?? result?.error ?? 'desconhecido'));
     } else {
       setPilots(prev => prev.filter(r => r.id !== p.id));
       setPilotTotal(t => t - 1);

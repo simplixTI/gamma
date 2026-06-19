@@ -85,21 +85,81 @@ serve(async (req) => {
       });
     }
 
-    // MP card/pix refund
-    const refundRes = await fetch(
-      `https://api.mercadopago.com/v1/payments/${payment.mp_payment_id}/refunds`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-          'X-Idempotency-Key': `refund-${rideId}`,
-        },
-        body: JSON.stringify({ amount: Number(ride.price) }),
-      }
-    );
+    // MP card/pix refund with retry on transient "Invalid status to refund"
+    async function attemptRefund(idempotencySuffix = '') {
+      return await fetch(
+        `https://api.mercadopago.com/v1/payments/${payment.mp_payment_id}/refunds`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': `refund-${rideId}${idempotencySuffix}`,
+          },
+          body: JSON.stringify({ amount: Number(ride.price) }),
+        }
+      );
+    }
 
-    const refundData = await refundRes.json();
+    let refundRes = await attemptRefund();
+    let refundData = await refundRes.json();
+
+    // Handle "Invalid status to refund" — common for cards in transient states.
+    // Check MP payment status; if approved but refund still rejected, retry once
+    // after a short delay (eventual consistency in MP backend).
+    const invalidStatus = !refundRes.ok &&
+      String(refundData?.message ?? '').toLowerCase().includes('invalid status to refund');
+
+    if (invalidStatus) {
+      console.warn('Got "Invalid status to refund" — checking MP payment status');
+      const statusRes = await fetch(
+        `https://api.mercadopago.com/v1/payments/${payment.mp_payment_id}`,
+        { headers: { 'Authorization': `Bearer ${MP_ACCESS_TOKEN}` } },
+      );
+      const statusData = await statusRes.json();
+      console.log('MP payment current status:', statusData.status, statusData.status_detail);
+
+      if (statusData.status === 'authorized') {
+        // Card payment authorized but not captured — use cancel instead of refund
+        console.log('Payment is authorized (not captured), attempting cancel');
+        const cancelRes = await fetch(
+          `https://api.mercadopago.com/v1/payments/${payment.mp_payment_id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': `cancel-${rideId}`,
+            },
+            body: JSON.stringify({ status: 'cancelled' }),
+          },
+        );
+        const cancelData = await cancelRes.json();
+        console.log('Cancel result:', cancelRes.status, cancelData);
+        if (cancelRes.ok) {
+          refundRes = cancelRes;
+          refundData = cancelData;
+        } else {
+          return new Response(
+            JSON.stringify({ error: 'mp_cancel_failed', details: cancelData }),
+            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          );
+        }
+      } else if (statusData.status === 'approved') {
+        // Wait briefly and retry once with fresh idempotency key
+        await new Promise(r => setTimeout(r, 1500));
+        refundRes = await attemptRefund('-retry');
+        refundData = await refundRes.json();
+        console.log('Retry refund result:', refundRes.status, refundData);
+      } else {
+        // Payment not in a refundable state — caller should retry later
+        console.warn('Payment not refundable yet, refund deferred. MP status:', statusData.status);
+        return new Response(
+          JSON.stringify({ error: 'payment_not_refundable_yet', mpStatus: statusData.status }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
 
     if (!refundRes.ok) {
       console.error('MP refund failed:', refundData);

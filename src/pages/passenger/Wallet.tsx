@@ -117,6 +117,38 @@ const WalletPage = () => {
     };
   }, [user?.id]);
 
+  // Auto-recovery: if wallet topup transaction stays in 'processing' after PIX is paid,
+  // poll its status and force-complete via RPC. Webhook sometimes fails to finalize.
+  useEffect(() => {
+    if (!pixData?.txId) return;
+    let polls = 0;
+    const interval = setInterval(async () => {
+      polls += 1;
+      const { data: tx } = await supabase
+        .from('wallet_transactions')
+        .select('status')
+        .eq('id', pixData.txId)
+        .maybeSingle();
+      if (tx?.status === 'completed') {
+        clearInterval(interval);
+        return;
+      }
+      if (tx?.status === 'processing' && polls >= 3) {
+        const { data: result } = await supabase.rpc('complete_stuck_wallet_topup', { p_tx_id: pixData.txId });
+        const r = result as { success?: boolean } | null;
+        if (r?.success) {
+          clearInterval(interval);
+          await loadWallet(true);
+          toast.success('Recarga confirmada!');
+          setShowTopUp(false);
+          setPixData(null);
+          setTopUpAmount(null);
+        }
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [pixData?.txId, loadWallet]);
+
   const handleGeneratePix = async () => {
     if (!topUpAmount || !user?.id) return;
     setGeneratingPix(true);

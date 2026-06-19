@@ -23,7 +23,7 @@ const sections = [
         </p>
         <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.6)' }}>
           Estes Termos constituem um contrato legalmente vinculante entre voce e a{' '}
-          <strong className="text-white">Simplix</strong> (CNPJ [CNPJ A PREENCHER]), desenvolvedora e operadora do Gamma.
+          <strong className="text-white">Simplix</strong> (CNPJ 54.062.495/0001-02), desenvolvedora e operadora do Gamma.
         </p>
       </div>
     ),
@@ -432,7 +432,7 @@ const sections = [
           <li className="flex gap-3">
             <span className="mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#22d3ee' }} />
             <span className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.6)' }}>
-              <strong className="text-white">Empresa:</strong> Simplix — CNPJ [CNPJ A PREENCHER]
+              <strong className="text-white">Empresa:</strong> Simplix — CNPJ 54.062.495/0001-02
             </span>
           </li>
         </ul>

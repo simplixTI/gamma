@@ -94,7 +94,8 @@ async function handleRidePayment(
     return ok({ error: 'invalid_ride_id_format' });
   }
 
-  const failedStatuses = ['rejected', 'cancelled', 'refunded', 'charged_back', 'expired'];
+  const failedStatuses = ['rejected', 'cancelled', 'expired'];
+  const refundedStatuses = ['refunded', 'charged_back'];
 
   if (mpPayment.status !== 'approved') {
     if (failedStatuses.includes(String(mpPayment.status))) {
@@ -102,13 +103,21 @@ async function handleRidePayment(
         .from('payments')
         .update({ status: 'failed' })
         .eq('mp_payment_id', mpPaymentId);
-      // Flag completed payments for refund (MP issued refund or chargeback)
-      if (mpPayment.status === 'refunded' || mpPayment.status === 'charged_back') {
-        await supabase.rpc('request_payment_refund', {
-          p_ride_id: rideId,
-          p_reason: String(mpPayment.status),
-        });
-      }
+    } else if (refundedStatuses.includes(String(mpPayment.status))) {
+      // Preserve refunded state — do not overwrite with 'failed'
+      await supabase
+        .from('payments')
+        .update({ status: 'refunded', updated_at: new Date().toISOString() })
+        .eq('mp_payment_id', mpPaymentId);
+      await supabase
+        .from('rides')
+        .update({ payment_status: 'refunded' })
+        .eq('id', rideId);
+      // Flag for refund tracking if not already
+      await supabase.rpc('request_payment_refund', {
+        p_ride_id: rideId,
+        p_reason: String(mpPayment.status),
+      });
     }
     return ok({ status: mpPayment.status });
   }

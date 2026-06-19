@@ -159,8 +159,12 @@ export function buildWaterRoute(
   to: LatLng,
   toPierId: string,
 ): LatLng[] {
-  const fromC = PIER_CANAL[fromPierId] as CanalName;
-  const toC   = PIER_CANAL[toPierId]   as CanalName;
+  const fromC = PIER_CANAL[fromPierId] as CanalName | undefined;
+  const toC   = PIER_CANAL[toPierId]   as CanalName | undefined;
+
+  if (!fromC || !toC) {
+    return dedupe([from, to]);
+  }
 
   const fromSeg = CANALS[fromC];
   const toSeg   = CANALS[toC];
@@ -229,7 +233,10 @@ export function buildPilotRoute(
   toPierId: string,
   toPos: LatLng,
 ): LatLng[] {
-  const toC   = PIER_CANAL[toPierId] as CanalName;
+  const toC   = PIER_CANAL[toPierId] as CanalName | undefined;
+  if (!toC) {
+    return dedupe([pilotPos, toPos]);
+  }
   const toSeg = CANALS[toC];
   const iTo   = closestIdx(toPos, toSeg);
   return dedupe([pilotPos, ...toSeg.slice(0, iTo + 1), toPos]);

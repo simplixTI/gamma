@@ -29,6 +29,7 @@ const AdminPilotApproval = lazy(() => import("./pages/admin/AdminPilotApproval")
 const AdminFinancial = lazy(() => import("./pages/admin/AdminFinancial"));
 const AdminAds = lazy(() => import("./pages/admin/AdminAds"));
 const AdminRides = lazy(() => import("./pages/admin/AdminRides"));
+const InstallPage = lazy(() => import("./pages/Install"));
 
 // Lazy loads — passenger pages
 const PassengerHome = lazy(() => import("./pages/passenger/PassengerHome"));
@@ -274,6 +275,7 @@ const App = () => (
                   <Route path="ads" element={<AdminAds />} />
                 </Route>
 
+                <Route path="/instalar" element={<InstallPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
               </Suspense>

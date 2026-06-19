@@ -201,7 +201,7 @@ const PrivacyPolicy = () => {
                 <p>
                   O aplicativo <strong style={{ color: 'rgba(255,255,255,0.85)' }}>Gamma</strong> é desenvolvido e operado pela{' '}
                   <strong style={{ color: 'rgba(255,255,255,0.85)' }}>Simplix</strong>, pessoa jurídica inscrita sob CNPJ{' '}
-                  <strong style={{ color: 'rgba(255,255,255,0.85)' }}>[CNPJ A PREENCHER]</strong>, com sede no Rio de Janeiro — RJ, Brasil.
+                  <strong style={{ color: 'rgba(255,255,255,0.85)' }}>54.062.495/0001-02</strong>, com sede no Rio de Janeiro — RJ, Brasil.
                 </p>
                 <p>
                   Para os fins da Lei Geral de Proteção de Dados (Lei 13.709/2018 — LGPD), a Simplix atua como{' '}
@@ -665,7 +665,7 @@ const PrivacyPolicy = () => {
                 <li className="flex gap-3 items-start">
                   <CyanBullet />
                   <span style={{ color: 'rgba(255,255,255,0.60)', lineHeight: 1.75 }} className="text-base">
-                    <strong style={{ color: 'rgba(255,255,255,0.85)' }}>Empresa:</strong> Simplix — CNPJ [CNPJ A PREENCHER]
+                    <strong style={{ color: 'rgba(255,255,255,0.85)' }}>Empresa:</strong> Simplix — CNPJ 54.062.495/0001-02
                   </span>
                 </li>
                 <li className="flex gap-3 items-start">

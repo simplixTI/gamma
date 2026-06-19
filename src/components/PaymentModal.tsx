@@ -317,6 +317,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
           }, 1500);
           return;
         }
+
+        if (payment?.status === 'processing') {
+          // Recovery for webhook stuck mid-transition
+          await supabase
+            .from('payments')
+            .update({ status: 'completed', paid_at: new Date().toISOString() })
+            .eq('id', pixData.paymentId)
+            .eq('status', 'processing');
+          await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
+          toast.success('Pagamento confirmado!');
+          setPixConfirmed(true);
+          setTimeout(() => {
+            onPaymentComplete?.();
+            onClose();
+          }, 1500);
+          return;
+        }
       }
 
       toast.info('Pagamento ainda não detectado. Aguarde alguns segundos e tente novamente.');
@@ -365,6 +382,22 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
           if (payment?.status === 'completed') {
             // Payment confirmed but ride not updated — force update and proceed
+            await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
+            clearInterval(interval);
+            setAwaitingPayment(false);
+            setPixConfirmed(true);
+            setTimeout(() => {
+              onPaymentComplete?.();
+              onClose();
+            }, 2000);
+          } else if (payment?.status === 'processing') {
+            // Recovery: webhook atomic claim succeeded but processing→completed
+            // transition failed silently. Force the completion client-side.
+            await supabase
+              .from('payments')
+              .update({ status: 'completed', paid_at: new Date().toISOString() })
+              .eq('id', pixData.paymentId)
+              .eq('status', 'processing');
             await supabase.from('rides').update({ payment_status: 'paid' }).eq('id', rideId);
             clearInterval(interval);
             setAwaitingPayment(false);

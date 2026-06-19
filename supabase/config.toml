@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.wallet-webhook]
 verify_jwt = false
+
+[functions.mp-refund]
+verify_jwt = false
+
+[functions.mp-tokenize-and-pay]
+verify_jwt = false

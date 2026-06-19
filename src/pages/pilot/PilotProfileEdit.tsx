@@ -90,9 +90,9 @@ const PilotProfileEdit = () => {
 
   const fetchProfile = async () => {
     if (!pilotId) return;
-    
+
     const { data, error } = await supabase
-      .from('pilots')
+      .from('pilot_profiles')
       .select('*')
       .eq('id', pilotId)
       .maybeSingle();
@@ -103,12 +103,29 @@ const PilotProfileEdit = () => {
     }
 
     if (data) {
-      setProfile(data);
+      // Map DB field names to the local form schema
+      setProfile({
+        name: data.full_name ?? '',
+        phone: data.phone ?? '',
+        photo_url: data.photo_url ?? '',
+        boat_name: data.boat_identification ?? '',
+        boat_capacity: data.boat_capacity ?? 8,
+        license_number: '',
+        pix_key: data.pix_key ?? '',
+        pix_key_type: data.pix_key_type ?? '',
+        bank_name: data.bank_name ?? '',
+        bank_account: data.bank_account ?? '',
+        bank_agency: data.bank_agency ?? '',
+        rating: data.rating ?? 0,
+        total_rides: data.total_rides ?? 0,
+        total_earnings: data.total_earnings ?? 0,
+        is_verified: data.is_verified ?? false,
+      });
       setIsNewProfile(false);
     } else {
       setIsNewProfile(true);
     }
-    
+
     setLoading(false);
   };
 
@@ -127,12 +144,12 @@ const PilotProfileEdit = () => {
 
     try {
       const profileData = {
-        name: profile.name,
+        full_name: profile.name,
         phone: profile.phone,
-        boat_name: profile.boat_name,
+        photo_url: profile.photo_url || null,
+        boat_identification: profile.boat_name || null,
         boat_capacity: profile.boat_capacity,
-        license_number: profile.license_number,
-        pix_key: profile.pix_key,
+        pix_key: profile.pix_key || null,
         pix_key_type: profile.pix_key_type || null,
         bank_name: profile.bank_name || null,
         bank_account: profile.bank_account || null,
@@ -140,8 +157,8 @@ const PilotProfileEdit = () => {
       };
 
       const { error } = isNewProfile
-        ? await supabase.from('pilots').insert({ id: pilotId, ...profileData })
-        : await supabase.from('pilots').update(profileData).eq('id', pilotId);
+        ? await supabase.from('pilot_profiles').insert({ id: pilotId, ...profileData })
+        : await supabase.from('pilot_profiles').update(profileData).eq('id', pilotId);
 
       if (error) throw error;
       toast.success(isNewProfile ? 'Perfil criado!' : 'Perfil atualizado!');
@@ -162,7 +179,7 @@ const PilotProfileEdit = () => {
     setSavingPayout(true);
     try {
       const { error } = await supabase
-        .from('pilots')
+        .from('pilot_profiles')
         .update({
           pix_key: profile.pix_key || null,
           pix_key_type: profile.pix_key_type || null,

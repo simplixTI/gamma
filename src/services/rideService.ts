@@ -49,16 +49,72 @@ export const createRide = async ({
 };
 
 export const cancelRide = async (rideId: string, userId: string) => {
+  // Check if ride was already paid — needs refund flag after cancel
+  const { data: rideBefore } = await supabase
+    .from('rides')
+    .select('payment_status')
+    .eq('id', rideId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('rides')
     .update({ status: 'cancelled' })
     .eq('id', rideId)
     .eq('status', 'pending')
-    .neq('payment_status', 'paid')
     .or(`passenger_user_id.eq.${userId},passenger_device_id.eq.${userId}`);
 
   if (error) {
     throw error;
+  }
+
+  // If the ride was paid, trigger automatic refund via MP API
+  if (rideBefore?.payment_status === 'paid') {
+    // Normalize payment stuck in 'processing' to 'completed' so mp-refund and
+    // request_payment_refund RPC can find it. Webhook sometimes leaves it stuck.
+    // RLS blocks authenticated UPDATE on payments — RPC runs SECURITY DEFINER.
+    await supabase.rpc('normalize_stuck_payment', { p_ride_id: rideId });
+
+    // Refresh JWT before invoking edge function to avoid 401 on expired tokens
+    await supabase.auth.refreshSession();
+
+    // Use fetch() directly instead of functions.invoke() — invoke() strips the
+    // Authorization header in some contexts causing UNAUTHORIZED_NO_AUTH_HEADER
+    const { data: { session } } = await supabase.auth.getSession();
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+    const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+    let refundErr: unknown = null;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/mp-refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          'apikey': ANON_KEY,
+        },
+        body: JSON.stringify({ rideId }),
+      });
+      if (!res.ok) {
+        refundErr = await res.json().catch(() => ({ status: res.status }));
+      }
+    } catch (e) {
+      refundErr = e;
+    }
+    if (refundErr) {
+      // MP refund failed (card pre-auth, transient state, etc) — credit user wallet
+      // instead of leaving them waiting. Instant resolution + funds available for next ride.
+      const { data: walletResult, error: walletErr } = await supabase
+        .rpc('refund_to_wallet', { p_ride_id: rideId });
+      if (walletErr || !(walletResult as { success?: boolean })?.success) {
+        // Last resort: flag for manual processing
+        await supabase.rpc('request_payment_refund', {
+          p_ride_id: rideId,
+          p_reason: 'auto_refund_failed_fallback',
+        });
+        console.warn('Auto refund + wallet credit both failed, marked for manual:', refundErr, walletErr);
+      } else {
+        console.log('Refund credited to wallet. New balance:', (walletResult as { new_balance?: number }).new_balance);
+      }
+    }
   }
 };
 
