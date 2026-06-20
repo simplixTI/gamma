@@ -22,11 +22,7 @@ BEGIN
   SET pilot_user_id = NULL
   WHERE pilot_user_id = p_user_id;
 
-  -- Nullify nullable FKs in payments (preserve payment history)
-  UPDATE public.payments
-  SET passenger_user_id = NULL
-  WHERE passenger_user_id = p_user_id;
-
+  -- Nullify pilot_id in payments (payments.pilot_id references auth.users, no cascade)
   UPDATE public.payments
   SET pilot_id = NULL
   WHERE pilot_id = p_user_id;
