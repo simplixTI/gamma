@@ -15,6 +15,18 @@ import { toast } from 'sonner';
 import RideAcceptedModal from '@/components/RideAcceptedModal';
 import RideStatusBanner from '@/components/RideStatusBanner';
 import AdDisplay from '@/components/AdDisplay';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+const TIMEOUT_SECONDS = 180;
 
 const SearchingPilot = () => {
   const navigate = useNavigate();
@@ -25,7 +37,8 @@ const SearchingPilot = () => {
   const [currentRideId, setCurrentRideId] = useState<string | null>(null);
   const [showAcceptedModal, setShowAcceptedModal] = useState(false);
   const [acceptedPilot, setAcceptedPilot] = useState<{ name: string; rating: number; phone: string } | null>(null);
-  const [showCancelWarning, setShowCancelWarning] = useState(false);
+  const [showRetryModal, setShowRetryModal] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   // Ref (not state) prevents stale closure in both realtime + fallback callbacks
   const navigatedToTrackingRef = React.useRef(false);
   const { playSound } = useNotificationSound();
@@ -176,58 +189,37 @@ const SearchingPilot = () => {
     return () => clearInterval(fallbackInterval);
   }, [currentRideId, navigate]);
 
-  // Increment search time and auto-cancel after 5 minutes
+  // Increment search time (paused while retry modal is open)
   useEffect(() => {
+    if (showRetryModal) return;
     const timer = setInterval(() => {
       setSearchTime((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [showRetryModal]);
 
-  // Show warning 15 seconds before auto-cancel
+  // Show "keep waiting?" modal at TIMEOUT_SECONDS instead of auto-cancelling
   useEffect(() => {
-    if (searchTime === 285 && !navigatedToTrackingRef.current) {
-      setShowCancelWarning(true);
+    if (
+      searchTime >= TIMEOUT_SECONDS &&
+      currentRideId &&
+      !navigatedToTrackingRef.current &&
+      !showRetryModal
+    ) {
+      setShowRetryModal(true);
     }
-  }, [searchTime]);
+  }, [searchTime, currentRideId, showRetryModal]);
 
-  // Trigger auto-cancel when timeout is reached (fetch fresh status first)
-  useEffect(() => {
-    if (searchTime >= 300 && currentRideId && !navigatedToTrackingRef.current) {
-      navigatedToTrackingRef.current = true;
+  const handleKeepWaiting = () => {
+    setRetryCount((c) => c + 1);
+    setSearchTime(0);
+    setShowRetryModal(false);
+  };
 
-      const checkAndCancel = async () => {
-        try {
-          const freshRide = await getCurrentRide(user?.id ?? '');
-          if (freshRide && (freshRide.status === 'accepted' || freshRide.status === 'in_progress' || freshRide.status === 'pilot_arriving')) {
-            navigatedToTrackingRef.current = false;
-            return; // pilot accepted — don't cancel
-          }
-          // Don't cancel if payment is confirmed (ride is valid, just waiting for pilot)
-          if (freshRide && (freshRide as any).payment_status === 'paid') {
-            navigatedToTrackingRef.current = false;
-            return;
-          }
-        } catch (err) {
-          console.error('Error checking ride status before auto-cancel:', err);
-        }
-
-        cancelRide(currentRideId, user?.id ?? '')
-          .then(() => {
-            toast.error('Nenhum piloto disponível no momento. Tente novamente mais tarde.');
-          })
-          .catch(() => {
-            toast.error('Tempo esgotado. Tente novamente.');
-          })
-          .finally(() => {
-            setRideStatus('idle');
-            navigate('/passenger');
-          });
-      };
-
-      checkAndCancel();
-    }
-  }, [searchTime, currentRideId, navigate, setRideStatus, user?.id]);
+  const handleStopWaiting = async () => {
+    setShowRetryModal(false);
+    await handleCancel();
+  };
 
   const handleCancel = async () => {
     // Prevent double-cancellation if realtime/polling has already navigated away
@@ -333,30 +325,15 @@ const SearchingPilot = () => {
             <Clock className="w-4 h-4" />
             <span>{formatTime(searchTime)}</span>
           </div>
-          {/* Always visible: time counter and auto-cancel info */}
+          {/* Always visible: time counter */}
           <div className="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
             <Clock className="w-3 h-3" />
             <span>
-              {searchTime < 240
-                ? `Buscando há ${Math.floor(searchTime / 60)}:${String(searchTime % 60).padStart(2, '0')} — cancela automaticamente em ${Math.floor((300 - searchTime) / 60)}:${String((300 - searchTime) % 60).padStart(2, '0')}`
-                : `Cancelamento automático em ${300 - searchTime}s`
-              }
+              {retryCount > 0
+                ? `Continuando busca (${retryCount}ª vez) — ${Math.floor(searchTime / 60)}:${String(searchTime % 60).padStart(2, '0')}`
+                : `Buscando há ${Math.floor(searchTime / 60)}:${String(searchTime % 60).padStart(2, '0')}`}
             </span>
           </div>
-
-          {/* Warning banner: 15s before auto-cancel */}
-          {showCancelWarning && !navigatedToTrackingRef.current && (
-            <div className="mt-4 bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3 flex items-center gap-3">
-              <span className="text-destructive text-lg">⚠️</span>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-destructive">Nenhum piloto encontrado</p>
-                <p className="text-xs text-destructive/80">A busca será cancelada automaticamente em {Math.max(0, 300 - searchTime)}s.</p>
-              </div>
-              <Button size="sm" variant="outline" className="border-destructive/40 text-destructive shrink-0" onClick={handleCancel}>
-                Cancelar
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Bottom card */}
@@ -406,6 +383,26 @@ const SearchingPilot = () => {
           </Button>
         </div>
       </div>
+
+      {/* 3-min timeout: ask if passenger wants to keep waiting */}
+      <AlertDialog open={showRetryModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Nenhum piloto aceitou ainda</AlertDialogTitle>
+            <AlertDialogDescription>
+              Já se passaram 3 minutos sem resposta. Deseja continuar buscando um piloto?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleStopWaiting}>
+              Cancelar corrida
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleKeepWaiting}>
+              Sim, continuar buscando
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
