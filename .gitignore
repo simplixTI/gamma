@@ -45,3 +45,5 @@ android/
 
 .vercel
 .env*.local
+
+.vercel
