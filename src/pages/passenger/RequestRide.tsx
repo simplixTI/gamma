@@ -8,6 +8,7 @@ import { locations } from '@/data/mockData';
 import { useApp } from '@/contexts/AppContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useReferral } from '@/hooks/useReferral';
+import { useVoucher } from '@/hooks/useVoucher';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import PaymentModal from '@/components/PaymentModal';
@@ -31,6 +32,7 @@ const RequestRide = () => {
   } = useApp();
   const { user, passengerProfile } = useAuthContext();
   const { hasDiscount, activeDiscount, useDiscount } = useReferral(user?.id);
+  const { pendingVoucher, clearPendingVoucher } = useVoucher(user?.id);
 
   const [showOriginPicker, setShowOriginPicker] = useState(false);
   const [showDestinationPicker, setShowDestinationPicker] = useState(!destination && !!origin);
@@ -252,7 +254,13 @@ const RequestRide = () => {
   const discountMultiplier = hasDiscount && activeDiscount
     ? 1 - Math.max(0, Math.min(100, activeDiscount.discount_percent)) / 100
     : 1;
-  const totalPrice = Math.ceil(baseTotal * discountMultiplier);
+  const referralDiscountAmount = baseTotal - Math.ceil(baseTotal * discountMultiplier);
+  // Voucher applies on top of any referral discount, capped at remaining amount
+  const afterReferral = baseTotal - referralDiscountAmount;
+  const voucherDiscountAmount = pendingVoucher
+    ? Math.min(pendingVoucher.value, afterReferral)
+    : 0;
+  const totalPrice = Math.max(0, afterReferral - voucherDiscountAmount);
   const distance = calculateDistance();
   const time = calculateTime();
 
@@ -289,18 +297,26 @@ const RequestRide = () => {
       }
     }
 
-    // Fair-split fields: pilot is paid 45% of GROSS, owner+simplix absorb the discount
-    const hasActiveDiscount = hasDiscount && activeDiscount && totalPrice < baseTotal;
-    const discountFields = hasActiveDiscount
+    // Fair-split fields: pilot is paid 45% of GROSS regardless of discount source.
+    // Both referral discount and voucher contribute to discount_amount; voucher
+    // also carries its own column so AdminFinancial can attribute the cost to the
+    // correct sponsor (owner or platform).
+    const totalDiscount = baseTotal - totalPrice;
+    const anyDiscountApplied = totalDiscount > 0;
+    const discountFields = anyDiscountApplied
       ? {
           gross_price: baseTotal,
-          discount_amount: baseTotal - totalPrice,
-          referral_discount_id: activeDiscount.id,
+          discount_amount: totalDiscount,
+          referral_discount_id: (hasDiscount && activeDiscount && referralDiscountAmount > 0) ? activeDiscount.id : null,
+          voucher_id: pendingVoucher && voucherDiscountAmount > 0 ? pendingVoucher.id : null,
+          voucher_discount_amount: voucherDiscountAmount,
         }
       : {
           gross_price: null,
           discount_amount: 0,
           referral_discount_id: null,
+          voucher_id: null,
+          voucher_discount_amount: 0,
         };
 
     setIsCreating(true);
@@ -391,12 +407,25 @@ const RequestRide = () => {
     // Client-side update is intentionally omitted to prevent premature/incorrect status.
 
     // Consume the referral discount if it was applied
-    if (hasDiscount && activeDiscount) {
+    if (hasDiscount && activeDiscount && referralDiscountAmount > 0) {
       try {
         await useDiscount(activeDiscount.id, currentRideId);
       } catch (err) {
         // Non-fatal — discount consumption failure should not block the ride
         console.error('Failed to consume referral discount:', err);
+      }
+    }
+
+    // Link the voucher to this ride so it shows up in admin reports
+    if (pendingVoucher && voucherDiscountAmount > 0) {
+      try {
+        await supabase
+          .from('vouchers')
+          .update({ used_on_ride_id: currentRideId })
+          .eq('id', pendingVoucher.id);
+        clearPendingVoucher();
+      } catch (err) {
+        console.error('Failed to link voucher to ride:', err);
       }
     }
 
@@ -636,10 +665,16 @@ const RequestRide = () => {
             <div className="flex items-center justify-between bg-background border border-border rounded-2xl px-4 py-2.5">
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Valor estimado</p>
-                {hasDiscount && activeDiscount && (
+                {hasDiscount && activeDiscount && referralDiscountAmount > 0 && (
                   <div className="flex items-center gap-1 mt-0.5">
                     <Tag className="w-3 h-3 text-success" />
                     <span className="text-xs text-success font-semibold">{activeDiscount.discount_percent}% off indicação</span>
+                  </div>
+                )}
+                {pendingVoucher && voucherDiscountAmount > 0 && (
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <Tag className="w-3 h-3 text-emerald-600" />
+                    <span className="text-xs text-emerald-600 font-semibold">−R${voucherDiscountAmount.toFixed(0)} voucher</span>
                   </div>
                 )}
                 {isPromoRoute && (
@@ -650,13 +685,13 @@ const RequestRide = () => {
                 )}
               </div>
               <div className="text-right">
-                {(hasDiscount && activeDiscount) && (
+                {(totalPrice < baseTotal) && (
                   <p className="text-xs text-muted-foreground line-through">R${baseTotal.toFixed(0)}</p>
                 )}
                 {isPromoRoute && (
                   <p className="text-xs text-muted-foreground line-through">R${(PROMO_ORIGINAL_PRICE * passengerCount).toFixed(0)}</p>
                 )}
-                <p className={`text-xl font-bold ${isPromoRoute ? 'text-warning' : hasDiscount ? 'text-success' : 'text-foreground'}`}>
+                <p className={`text-xl font-bold ${isPromoRoute ? 'text-warning' : (totalPrice < baseTotal) ? 'text-success' : 'text-foreground'}`}>
                   R${totalPrice.toFixed(0)}
                 </p>
                 {passengerCount > 1 && (

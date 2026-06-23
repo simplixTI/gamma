@@ -55,6 +55,8 @@ interface PaidRide {
   price: number;
   gross_price: number | null;
   discount_amount: number | null;
+  voucher_discount_amount: number | null;
+  voucher_sponsor: 'owner' | 'platform' | null;
   completed_at: string | null;
 }
 
@@ -160,7 +162,7 @@ const AdminFinancial = () => {
           .order('sold_at', { ascending: false })
           .limit(50),
         supabase.from('rides')
-          .select('id, price, gross_price, discount_amount, completed_at')
+          .select('id, price, gross_price, discount_amount, voucher_discount_amount, completed_at, vouchers:voucher_id(sponsor)')
           .eq('payment_status', 'paid')
           .order('completed_at', { ascending: false })
           .limit(500),
@@ -170,7 +172,25 @@ const AdminFinancial = () => {
       setPayments(pmts);
       setWalletTxs(wRes.data ?? []);
       setAdSales((adsRes.data ?? []) as AdSale[]);
-      setPaidRides((ridesRes.data ?? []) as PaidRide[]);
+      // Flatten the joined voucher relation for easier consumption downstream.
+      const ridesRaw = (ridesRes.data ?? []) as Array<{
+        id: string;
+        price: number;
+        gross_price: number | null;
+        discount_amount: number | null;
+        voucher_discount_amount: number | null;
+        completed_at: string | null;
+        vouchers: { sponsor: 'owner' | 'platform' } | null;
+      }>;
+      setPaidRides(ridesRaw.map(r => ({
+        id: r.id,
+        price: r.price,
+        gross_price: r.gross_price,
+        discount_amount: r.discount_amount,
+        voucher_discount_amount: r.voucher_discount_amount,
+        voucher_sponsor: r.vouchers?.sponsor ?? null,
+        completed_at: r.completed_at,
+      })));
 
       const completed = pmts.filter(p => p.status === 'completed' && p.paid_at);
       const byDay: Record<string, DailyRevenue> = {};
@@ -193,17 +213,48 @@ const AdminFinancial = () => {
   const todayRevenue = daily.find(d => d.date === new Date().toISOString().slice(0, 10))?.total ?? 0;
 
   // Revenue split totals — fair-discount model
-  // Pilot always gets 45% of GROSS (pre-discount); owner + simplix absorb the discount
-  // proportionally from what's left after paying the pilot.
-  const totalRidesPaid = paidRides.reduce((s, r) => s + Number(r.price), 0);
-  const totalRidesGross = paidRides.reduce((s, r) => s + Number(r.gross_price ?? r.price), 0);
-  const totalDiscount = paidRides.reduce((s, r) => s + Number(r.discount_amount ?? 0), 0);
-
-  const totalPilot = totalRidesGross * PILOT_PCT;
-  const ownerSimplixPool = Math.max(0, totalRidesPaid - totalPilot);
+  // Pilot always gets 45% of GROSS (pre-discount); voucher discount is fully borne by
+  // its declared sponsor; remaining discount (referral) is split proportionally
+  // between owner and simplix (45:10 ratio).
   const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
-  const totalOwners = ownerSimplixPool * (OWNERS_PCT / ownerSimplixSum);
-  const totalSimplix = ownerSimplixPool * (SIMPLIX_PCT / ownerSimplixSum);
+  let totalPilot = 0;
+  let totalOwners = 0;
+  let totalSimplix = 0;
+  let totalDiscount = 0;
+  let totalVoucherOwner = 0;
+  let totalVoucherPlatform = 0;
+
+  for (const r of paidRides) {
+    const gross = Number(r.gross_price ?? r.price);
+    const totalDisc = Number(r.discount_amount ?? 0);
+    const voucherDisc = Number(r.voucher_discount_amount ?? 0);
+    const referralDisc = Math.max(0, totalDisc - voucherDisc);
+
+    const pilotShare = gross * PILOT_PCT;
+    // Base shares before any discount absorption
+    let ownerShare = gross * OWNERS_PCT;
+    let simplixShare = gross * SIMPLIX_PCT;
+
+    // Voucher: sponsor pays the full voucher value
+    if (voucherDisc > 0 && r.voucher_sponsor === 'owner') {
+      ownerShare -= voucherDisc;
+    } else if (voucherDisc > 0 && r.voucher_sponsor === 'platform') {
+      simplixShare -= voucherDisc;
+    }
+
+    // Referral: split proportionally between owner and simplix
+    if (referralDisc > 0) {
+      ownerShare -= referralDisc * (OWNERS_PCT / ownerSimplixSum);
+      simplixShare -= referralDisc * (SIMPLIX_PCT / ownerSimplixSum);
+    }
+
+    totalPilot += pilotShare;
+    totalOwners += ownerShare;
+    totalSimplix += simplixShare;
+    totalDiscount += totalDisc;
+    if (r.voucher_sponsor === 'owner') totalVoucherOwner += voucherDisc;
+    if (r.voucher_sponsor === 'platform') totalVoucherPlatform += voucherDisc;
+  }
 
   // Ad sales (100% platform extra revenue)
   const totalAdRevenue = adSales.reduce((s, a) => s + Number(a.price), 0);
