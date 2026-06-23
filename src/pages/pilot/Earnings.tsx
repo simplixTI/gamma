@@ -19,8 +19,12 @@ interface Transaction {
   time: string;
 }
 
-// Platform takes 70%; pilot receives 30% of gross fare
-const COMMISSION_PERCENT = 70;
+// Revenue split: 45% pilot / 45% boat owner / 10% Simplix platform fee
+// Pilot retains 45% of gross fare; the remaining 55% is split off the top.
+const PILOT_PERCENT = 45;
+const OWNER_PERCENT = 45;
+const PLATFORM_PERCENT = 10;
+const COMMISSION_PERCENT = OWNER_PERCENT + PLATFORM_PERCENT; // 55
 
 interface EarningsSummary {
   total: number;
@@ -208,8 +212,12 @@ const Earnings = () => {
                   <span>R$ {current.gross.toFixed(2).replace('.', ',')}</span>
                 </div>
                 <div className="flex justify-between text-xs opacity-70">
-                  <span>Comissão plataforma ({COMMISSION_PERCENT}%)</span>
-                  <span>- R$ {current.commission.toFixed(2).replace('.', ',')}</span>
+                  <span>Dono do barco ({OWNER_PERCENT}%)</span>
+                  <span>- R$ {(current.gross * OWNER_PERCENT / 100).toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div className="flex justify-between text-xs opacity-70">
+                  <span>Taxa plataforma ({PLATFORM_PERCENT}%)</span>
+                  <span>- R$ {(current.gross * PLATFORM_PERCENT / 100).toFixed(2).replace('.', ',')}</span>
                 </div>
                 {current.tips > 0 && (
                   <div className="flex justify-between text-xs opacity-80">
@@ -218,7 +226,7 @@ const Earnings = () => {
                   </div>
                 )}
               </div>
-              <p className="text-xs opacity-60 mt-2">{COMMISSION_PERCENT}% de comissão da plataforma já descontados</p>
+              <p className="text-xs opacity-60 mt-2">Você fica com {PILOT_PERCENT}% do valor da corrida + 100% das gorjetas</p>
             </>
           )}
         </div>

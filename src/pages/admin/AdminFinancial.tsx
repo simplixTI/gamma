@@ -3,10 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Split constants — kept in sync with platform_config table
-const PILOT_PCT = 0.30;
-const SIMPLIX_PCT = 0.20;
-const OWNERS_PCT = 0.50;
+// Split constants — kept in sync with platform_config table (45/45/10)
+const PILOT_PCT = 0.45;
+const SIMPLIX_PCT = 0.10;
+const OWNERS_PCT = 0.45;
 
 interface PaymentRow {
   id: string;
@@ -199,23 +199,11 @@ const AdminFinancial = () => {
                     <Anchor className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">PILOTOS (30%)</p>
+                    <p className="text-xs text-muted-foreground font-medium">PILOTOS (45%)</p>
                     <p className="text-xl font-bold text-foreground">{fmt(totalPilot)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">30% de cada corrida vai para o piloto</p>
-              </div>
-              <div className="bg-card rounded-xl border border-border p-5">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
-                    <Building2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">SIMPLIX (20%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalSimplix)}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">Taxa da plataforma Simplix</p>
+                <p className="text-xs text-muted-foreground">45% de cada corrida vai para o piloto</p>
               </div>
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
@@ -223,11 +211,23 @@ const AdminFinancial = () => {
                     <Users className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">DONOS (50%)</p>
+                    <p className="text-xs text-muted-foreground font-medium">DONOS DO BARCO (45%)</p>
                     <p className="text-xl font-bold text-foreground">{fmt(totalOwners)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Repasse para os donos da plataforma</p>
+                <p className="text-xs text-muted-foreground">Repasse para os donos dos barcos</p>
+              </div>
+              <div className="bg-card rounded-xl border border-border p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">SIMPLIX (10%)</p>
+                    <p className="text-xl font-bold text-foreground">{fmt(totalSimplix)}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Taxa da plataforma Simplix</p>
               </div>
             </div>
           </div>
@@ -259,9 +259,9 @@ const AdminFinancial = () => {
                     <tr className="border-b border-border bg-muted/50">
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Piloto (30%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (20%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Donos (50%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Piloto (45%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Dono barco (45%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (10%)</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Ação</th>
                     </tr>
                   </thead>
@@ -271,8 +271,8 @@ const AdminFinancial = () => {
                         <td className="px-4 py-3 font-medium text-foreground">{p.pilot_name}</td>
                         <td className="px-4 py-3 text-foreground">{fmt(p.gross)}</td>
                         <td className="px-4 py-3 font-semibold text-blue-600">{fmt(p.pilot_share)}</td>
-                        <td className="px-4 py-3 font-semibold text-purple-600">{fmt(p.simplix_share)}</td>
                         <td className="px-4 py-3 font-semibold text-green-600">{fmt(p.owners_share)}</td>
+                        <td className="px-4 py-3 font-semibold text-purple-600">{fmt(p.simplix_share)}</td>
                         <td className="px-4 py-3">
                           <Button
                             size="sm"
@@ -308,9 +308,9 @@ const AdminFinancial = () => {
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Pilotos</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Donos</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Pilotos (45%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Donos (45%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (10%)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -322,8 +322,8 @@ const AdminFinancial = () => {
                         <td className="px-4 py-3 text-muted-foreground">{d.count}</td>
                         <td className="px-4 py-3 font-semibold text-foreground">{fmt(d.total)}</td>
                         <td className="px-4 py-3 text-blue-600">{fmt(d.total * PILOT_PCT)}</td>
-                        <td className="px-4 py-3 text-purple-600">{fmt(d.total * SIMPLIX_PCT)}</td>
                         <td className="px-4 py-3 text-green-600">{fmt(d.total * OWNERS_PCT)}</td>
+                        <td className="px-4 py-3 text-purple-600">{fmt(d.total * SIMPLIX_PCT)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -341,8 +341,8 @@ const AdminFinancial = () => {
                   <tr className="border-b border-border bg-muted/50">
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto (30%)</th>
-                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Plataforma (70%)</th>
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto (45%)</th>
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Dono + Simplix (55%)</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Status</th>
                   </tr>
                 </thead>
