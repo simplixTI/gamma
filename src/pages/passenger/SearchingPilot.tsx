@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const TIMEOUT_SECONDS = 180;
+const TIMEOUT_SECONDS = 120;
 
 const SearchingPilot = () => {
   const navigate = useNavigate();
@@ -390,7 +390,7 @@ const SearchingPilot = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Nenhum piloto aceitou ainda</AlertDialogTitle>
             <AlertDialogDescription>
-              Já se passaram 3 minutos sem resposta. Deseja continuar buscando um piloto?
+              Já se passaram 2 minutos sem resposta. Deseja continuar buscando um piloto?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
