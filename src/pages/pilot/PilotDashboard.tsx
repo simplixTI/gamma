@@ -55,8 +55,10 @@ const PilotDashboard = () => {
   const boatCapacity: number = Math.max(1, pilotProfile?.boat_capacity ?? BOAT_CAPACITY);
   const availableSeats = boatCapacity - currentPassengers;
 
-  // GPS always active while online (pool: barco em movimento constante)
-  usePilotGPS({ rideId: undefined, pilotId: pilotId || undefined, isActive: isPilotOnline });
+  // GPS always active while online (pool: barco em movimento constante).
+  // locations.pilot_id references auth.users(id), so pass user.id (NOT
+  // pilot_profiles.id). Using pilot_profiles.id throws FK violation 23503.
+  usePilotGPS({ rideId: undefined, pilotId: user?.id || undefined, isActive: isPilotOnline });
 
   const dbRideToRide = useCallback((dbRide: DbRide): Ride => ({
     id: dbRide.id,
