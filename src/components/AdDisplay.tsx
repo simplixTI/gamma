@@ -45,12 +45,12 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
           onClick={(e) => { if (!ad.link_url?.startsWith('http')) e.preventDefault(); }}
         >
           {ad.image_url && (
-            <div className="relative aspect-[2/1] overflow-hidden bg-muted">
+            <div className="relative aspect-[2/1] overflow-hidden bg-gradient-to-br from-pink-100 via-purple-100 to-sky-100">
               <img
                 src={ad.image_url}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover blur-2xl scale-125 opacity-90 saturate-150"
+                className="absolute inset-0 w-full h-full object-cover blur-2xl scale-125 saturate-150 mix-blend-multiply"
               />
               <img
                 src={ad.image_url}
