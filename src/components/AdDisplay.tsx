@@ -45,13 +45,21 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
           onClick={(e) => { if (!ad.link_url?.startsWith('http')) e.preventDefault(); }}
         >
           {ad.image_url && (
-            <img
-              src={ad.image_url}
-              alt={ad.title}
-              className="w-full h-28 object-cover"
-              loading="lazy"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
+            <div className="relative aspect-[2/1] overflow-hidden bg-muted">
+              <img
+                src={ad.image_url}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover blur-3xl scale-150 opacity-60"
+              />
+              <img
+                src={ad.image_url}
+                alt={ad.title}
+                className="relative w-full h-full object-contain drop-shadow-md"
+                loading="lazy"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </div>
           )}
           <div className="px-4 py-3">
             <p className="font-semibold text-foreground text-sm">{ad.title}</p>
