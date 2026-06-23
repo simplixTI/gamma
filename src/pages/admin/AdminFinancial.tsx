@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Split constants — kept in sync with platform_config table (45/45/10)
@@ -63,6 +63,17 @@ interface AdSale {
   title: string;
 }
 
+interface VoucherCostSummary {
+  total_count: number;
+  total_value: number;
+  owner_count: number;
+  owner_value: number;
+  platform_count: number;
+  platform_value: number;
+  month_value: number;
+  redeemed_value: number; // ja resgatado (virou saldo)
+}
+
 interface PaidRide {
   id: string;
   price: number;
@@ -111,6 +122,9 @@ const AdminFinancial = () => {
   // Histórico de repasses já efetuados (últimos 30 dias)
   const [payoutHistory, setPayoutHistory] = useState<PayoutHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Custo de vouchers (cobrado na criação)
+  const [voucherCosts, setVoucherCosts] = useState<VoucherCostSummary | null>(null);
+  const [voucherCostsLoading, setVoucherCostsLoading] = useState(true);
   // Ad sales (100% platform revenue)
   const [adSales, setAdSales] = useState<AdSale[]>([]);
   // Paid rides — needed to compute fair split (pilot gets gross share, discount absorbed by owner+simplix)
@@ -218,10 +232,45 @@ const AdminFinancial = () => {
     });
   };
 
+  const loadVoucherCosts = useCallback(async () => {
+    setVoucherCostsLoading(true);
+    const { data } = await supabase
+      .from('vouchers')
+      .select('value, sponsor, created_at, is_used');
+    if (data) {
+      const monthStartIso = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      const summary: VoucherCostSummary = {
+        total_count: 0, total_value: 0,
+        owner_count: 0, owner_value: 0,
+        platform_count: 0, platform_value: 0,
+        month_value: 0, redeemed_value: 0,
+      };
+      for (const v of data) {
+        const value = Number(v.value);
+        summary.total_count += 1;
+        summary.total_value += value;
+        if (v.sponsor === 'owner') {
+          summary.owner_count += 1;
+          summary.owner_value += value;
+        } else if (v.sponsor === 'platform') {
+          summary.platform_count += 1;
+          summary.platform_value += value;
+        }
+        if (v.created_at && v.created_at >= monthStartIso) {
+          summary.month_value += value;
+        }
+        if (v.is_used) summary.redeemed_value += value;
+      }
+      setVoucherCosts(summary);
+    }
+    setVoucherCostsLoading(false);
+  }, []);
+
   useEffect(() => {
     loadPilotPayouts();
     loadPayoutHistory();
-  }, [loadPilotPayouts, loadPayoutHistory]);
+    loadVoucherCosts();
+  }, [loadPilotPayouts, loadPayoutHistory, loadVoucherCosts]);
 
   useEffect(() => {
     const load = async () => {
@@ -407,6 +456,57 @@ const AdminFinancial = () => {
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+
+          {/* Custos de Vouchers — cobrados na criacao */}
+          <div>
+            <h2 className="text-lg font-semibold text-foreground mb-3">
+              Custos de Vouchers <span className="text-xs font-normal text-muted-foreground">— cobrado na criação</span>
+            </h2>
+            {voucherCostsLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}
+              </div>
+            ) : !voucherCosts || voucherCosts.total_count === 0 ? (
+              <div className="bg-card rounded-xl border border-border p-6 text-center text-muted-foreground text-sm">
+                Nenhum voucher emitido ainda.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+                  <StatCard
+                    icon={Ticket}
+                    label="Total emitido"
+                    value={fmt(voucherCosts.total_value)}
+                    sub={`${voucherCosts.total_count} ${voucherCosts.total_count === 1 ? 'voucher' : 'vouchers'}`}
+                    color="orange"
+                  />
+                  <StatCard
+                    icon={TrendingUp}
+                    label="Emitido este mês"
+                    value={fmt(voucherCosts.month_value)}
+                    color="blue"
+                  />
+                  <StatCard
+                    icon={Users}
+                    label="Patrocinado por Dono"
+                    value={fmt(voucherCosts.owner_value)}
+                    sub={`${voucherCosts.owner_count} ${voucherCosts.owner_count === 1 ? 'voucher' : 'vouchers'}`}
+                    color="green"
+                  />
+                  <StatCard
+                    icon={Building2}
+                    label="Patrocinado por Plataforma"
+                    value={fmt(voucherCosts.platform_value)}
+                    sub={`${voucherCosts.platform_count} ${voucherCosts.platform_count === 1 ? 'voucher' : 'vouchers'}`}
+                    color="purple"
+                  />
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-700">
+                  <strong>Como funciona:</strong> o custo do voucher é registrado na hora da criação. Já resgatado (virou saldo): <span className="font-bold tabular-nums">{fmt(voucherCosts.redeemed_value)}</span>. A diferença é "responsabilidade futura" — voucher emitido mas ainda não usado pelo passageiro.
+                </div>
+              </>
             )}
           </div>
 
