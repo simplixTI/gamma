@@ -93,7 +93,7 @@ const Completed = () => {
 
     const checkRideAndPayment = async () => {
       const [rideResult, walletResult] = await Promise.all([
-        supabase.from('rides').select('id, status, origin_name, destination_name, pilot_name, pilot_user_id, price, estimated_time, started_at, completed_at, payment_status, passenger_device_id').eq('id', rideId).single(),
+        supabase.from('rides').select('id, status, origin_name, destination_name, pilot_name, pilot_user_id, price, estimated_time, started_at, completed_at, payment_status, payment_method, passenger_device_id').eq('id', rideId).single(),
         user?.id
           ? supabase
               .from('passenger_profiles')
@@ -225,12 +225,33 @@ const Completed = () => {
           });
         if (error) throw error;
 
-        // Gravar tip na corrida somente se o pagamento foi confirmado
+        // Cobrar gorjeta do saldo (atômico: debita carteira + grava rides.tip + wallet_transactions)
         if (isPaid && selectedTip) {
-          await supabase
-            .from('rides')
-            .update({ tip: selectedTip })
-            .eq('id', rideId);
+          const { data: tipResult, error: tipError } = await supabase.rpc('tip_ride_with_wallet', {
+            p_user_id: user.id,
+            p_ride_id: rideId,
+            p_amount: selectedTip,
+          });
+
+          if (tipError) throw tipError;
+
+          if (!tipResult?.success) {
+            const code = tipResult?.error;
+            if (code === 'insufficient_balance') {
+              const bal = Number(tipResult?.balance ?? 0);
+              toast.error(`Saldo insuficiente para gorjeta. Você tem R$ ${bal.toFixed(2).replace('.', ',')}.`);
+            } else if (code === 'tip_already_given') {
+              toast.info('Gorjeta já enviada para esta corrida.');
+            } else if (code === 'ride_not_paid') {
+              toast.error('Corrida ainda não foi paga.');
+            } else {
+              toast.error('Não foi possível processar a gorjeta.');
+            }
+            return;
+          }
+
+          setWalletBalance(Number(tipResult.balance_after));
+          toast.success(`Gorjeta de R$ ${selectedTip.toFixed(2).replace('.', ',')} enviada!`);
         }
       }
       toast.success('Obrigado pela avaliação!');
@@ -398,32 +419,56 @@ const Completed = () => {
           className="w-full bg-background border border-border rounded-xl p-2.5 resize-none h-16 mb-4 focus:outline-none focus:ring-2 focus:ring-secondary/50 text-sm"
         />
 
-        {/* Tip — only after payment confirmed */}
-        {isPaid && <div className="mb-5">
-          <p className="text-center text-foreground font-medium text-sm mb-2">
+        {/* Tip — only available after wallet payment (PIX/cartão not supported) */}
+        {isPaid && rideData?.payment_method === 'wallet' && <div className="mb-5">
+          <p className="text-center text-foreground font-medium text-sm mb-1">
             Dar gorjeta ao piloto
           </p>
+          <p className="text-center text-xs text-muted mb-2">
+            Saldo: R$ {(walletBalance ?? 0).toFixed(2).replace('.', ',')}
+          </p>
           <div className="flex justify-center gap-2">
-            {tipOptions.map((tip) => (
-              <button
-                key={tip}
-                onClick={() => setSelectedTip(selectedTip === tip ? null : tip)}
-                className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
-                  selectedTip === tip
-                    ? 'bg-success text-success-foreground shadow-md'
-                    : 'bg-background text-foreground border border-border hover:border-success/50'
-                }`}
-              >
-                R$ {tip}
-              </button>
-            ))}
+            {tipOptions.map((tip) => {
+              const canAfford = (walletBalance ?? 0) >= tip;
+              return (
+                <button
+                  key={tip}
+                  disabled={!canAfford}
+                  onClick={() => setSelectedTip(selectedTip === tip ? null : tip)}
+                  className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
+                    !canAfford
+                      ? 'bg-muted/20 text-muted-foreground/60 cursor-not-allowed border border-border'
+                      : selectedTip === tip
+                      ? 'bg-success text-success-foreground shadow-md'
+                      : 'bg-background text-foreground border border-border hover:border-success/50'
+                  }`}
+                >
+                  R$ {tip}
+                </button>
+              );
+            })}
           </div>
           {selectedTip && (
             <p className="text-center text-xs text-success mt-2 font-medium">
-              Obrigado! O piloto ficará muito feliz
+              Será descontado R$ {selectedTip.toFixed(2).replace('.', ',')} do seu saldo
+            </p>
+          )}
+          {!selectedTip && (walletBalance ?? 0) < tipOptions[0] && (
+            <p className="text-center text-xs text-muted mt-2">
+              Adicione saldo na carteira para dar gorjeta
             </p>
           )}
         </div>}
+
+        {/* PIX/cartão: informa que gorjeta exige saldo na carteira */}
+        {isPaid && rideData?.payment_method && rideData.payment_method !== 'wallet' && (
+          <div className="mb-5 bg-muted/30 border border-border rounded-xl p-3">
+            <p className="text-center text-xs text-muted-foreground">
+              Pagamentos por {rideData.payment_method === 'pix' ? 'PIX' : 'cartão'} não suportam gorjeta.
+              Para dar gorjeta, adicione saldo na carteira na próxima corrida.
+            </p>
+          </div>
+        )}
 
         {/* Low rating confirmation inline banner */}
         {confirmLowRating && (

@@ -77,6 +77,7 @@ export interface DbRide {
   completed_at: string | null;
   tip?: number | null;
   payment_status?: string | null;
+  payment_method?: 'wallet' | 'pix' | 'card' | null;
   cancellation_fee?: number | null;
   cancelled_by?: string | null;
   // Pool fields
