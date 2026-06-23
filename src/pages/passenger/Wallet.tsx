@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Wallet, Plus, ArrowUpRight, ArrowDownLeft, Loader2, RefreshCw, QrCode, Copy, Check, X, Clock, Ticket, Gift } from 'lucide-react';
+import { ArrowLeft, Wallet, Plus, ArrowUpRight, ArrowDownLeft, Loader2, RefreshCw, QrCode, Copy, Check, X, Clock, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
@@ -47,8 +47,8 @@ const WalletPage = () => {
   const [generatingPix, setGeneratingPix] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Voucher redemption
-  const { pendingVoucher, redeem: redeemVoucher } = useVoucher(user?.id);
+  // Voucher redemption — credita saldo direto na carteira
+  const { redeem: redeemVoucher } = useVoucher(user?.id);
   const [voucherCode, setVoucherCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
 
@@ -58,9 +58,14 @@ const WalletPage = () => {
     setRedeeming(true);
     const result = await redeemVoucher(code);
     setRedeeming(false);
-    if (result.success && result.voucher) {
-      toast.success(`Voucher de R$ ${result.voucher.value.toFixed(2).replace('.', ',')} aplicado!`);
+    if (result.success && result.value != null) {
+      toast.success(`R$ ${result.value.toFixed(2).replace('.', ',')} creditados no seu saldo!`);
       setVoucherCode('');
+      if (result.newBalance != null) {
+        setBalance(result.newBalance);
+      }
+      // Refresh transactions list para mostrar o novo lancamento
+      loadWallet(true);
     } else {
       const errorMap: Record<string, string> = {
         voucher_not_found: 'Código de voucher não encontrado.',
@@ -68,6 +73,7 @@ const WalletPage = () => {
         expired: 'Esse voucher expirou.',
         empty_code: 'Digite um código.',
         no_user: 'Faça login para resgatar.',
+        profile_not_found: 'Perfil não encontrado. Faça login novamente.',
         rpc_error: 'Erro ao resgatar. Tente novamente.',
       };
       toast.error(errorMap[result.error ?? ''] ?? 'Não foi possível resgatar o voucher.');
@@ -301,48 +307,29 @@ const WalletPage = () => {
           Adicionar saldo
         </Button>
 
-        {/* Voucher redemption */}
-        {pendingVoucher ? (
-          <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/30 rounded-2xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-700 flex items-center justify-center shrink-0">
-                <Gift className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs uppercase tracking-wide text-emerald-700/80 font-bold">Voucher pronto pra usar</p>
-                <p className="text-lg font-bold text-foreground tabular-nums">
-                  R$ {pendingVoucher.value.toFixed(2).replace('.', ',')} de desconto
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  Código <span className="font-mono">{pendingVoucher.code}</span>
-                  {pendingVoucher.partner_name && <> · {pendingVoucher.partner_name}</>}
-                </p>
-              </div>
-            </div>
-            <p className="text-xs text-emerald-700/80 mt-2 pl-14">Será aplicado automaticamente na sua próxima corrida.</p>
+        {/* Voucher redemption — credita direto no saldo */}
+        <div className="bg-card rounded-2xl border border-border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Ticket className="w-4 h-4 text-primary" />
+            <p className="text-sm font-semibold text-foreground">Resgatar voucher Gamma Cash</p>
           </div>
-        ) : (
-          <div className="bg-card rounded-2xl border border-border p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Ticket className="w-4 h-4 text-primary" />
-              <p className="text-sm font-semibold text-foreground">Resgatar voucher Gamma Cash</p>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">Digite o código que você recebeu do parceiro.</p>
-            <div className="flex gap-2">
-              <Input
-                value={voucherCode}
-                onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-                placeholder="GAMMA-XXXXXX"
-                className="font-mono uppercase"
-                disabled={redeeming}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemVoucher(); }}
-              />
-              <Button onClick={handleRedeemVoucher} disabled={redeeming || !voucherCode.trim()} className="shrink-0">
-                {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Resgatar'}
-              </Button>
-            </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Digite o código do parceiro. O valor entra no seu saldo na hora.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+              placeholder="GAMMA-XXXXXX"
+              className="font-mono uppercase"
+              disabled={redeeming}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemVoucher(); }}
+            />
+            <Button onClick={handleRedeemVoucher} disabled={redeeming || !voucherCode.trim()} className="shrink-0">
+              {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Resgatar'}
+            </Button>
           </div>
-        )}
+        </div>
 
         {/* Transaction history */}
         <div>
