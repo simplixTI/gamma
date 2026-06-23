@@ -8,6 +8,7 @@ interface PilotStats {
   tips: number;
   rating: number;
   totalRides: number;
+  totalEarnings: number;
 }
 
 export const usePilotStats = () => {
@@ -18,6 +19,7 @@ export const usePilotStats = () => {
     tips: 0,
     rating: 0,
     totalRides: 0,
+    totalEarnings: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -29,11 +31,11 @@ export const usePilotStats = () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const [countResult, todayResult] = await Promise.all([
-        // Count total rides efficiently — no need to fetch all rows
+      const [allResult, todayResult] = await Promise.all([
+        // Fetch ALL completed paid rides — compute total count and total earnings
         supabase
           .from('rides')
-          .select('id', { count: 'exact', head: true })
+          .select('id, price, tip')
           .eq('pilot_id', currentPilotId)
           .eq('status', 'completed')
           .eq('payment_status', 'paid'),
@@ -46,12 +48,17 @@ export const usePilotStats = () => {
           .gte('completed_at', today.toISOString()),
       ]);
 
+      const allRides = allResult.data ?? [];
       const todayRides = todayResult.data ?? [];
 
       const ridesToday = todayRides.length;
-      const totalRides = countResult.count ?? 0;
+      const totalRides = allRides.length;
       const todayEarnings = todayRides.reduce((sum, r) => sum + Number(r.price || 0), 0);
       const todayTips = todayRides.reduce((sum, r) => sum + Number(r.tip || 0), 0);
+      const totalEarnings = allRides.reduce(
+        (sum, r) => sum + Number(r.price || 0) + Number(r.tip || 0),
+        0
+      );
 
       // Use rating stored on pilot_profiles (maintained by review trigger)
       const avgRating =
@@ -65,6 +72,7 @@ export const usePilotStats = () => {
         tips: todayTips,
         rating: Math.round(avgRating * 10) / 10,
         totalRides,
+        totalEarnings,
       });
     } catch (error) {
       console.error('Error in fetchStats:', error);

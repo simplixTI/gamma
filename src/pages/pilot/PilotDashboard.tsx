@@ -357,12 +357,12 @@ const PilotDashboard = () => {
 
         <div className="flex items-center justify-around pb-4 px-4">
           <div className="text-center">
-            <p className="text-2xl font-bold">{statsLoading ? '-' : stats.ridesToday}</p>
+            <p className="text-2xl font-bold">{statsLoading ? '-' : stats.totalRides}</p>
             <p className="text-xs opacity-70">Corridas</p>
           </div>
           <div className="w-px h-8 bg-primary-foreground/20" />
           <div className="text-center">
-            <p className="text-2xl font-bold">R${statsLoading ? '-' : stats.earnings.toFixed(0)}</p>
+            <p className="text-2xl font-bold">R${statsLoading ? '-' : stats.totalEarnings.toFixed(0)}</p>
             <p className="text-xs opacity-70">Ganhos</p>
           </div>
           <div className="w-px h-8 bg-primary-foreground/20" />
