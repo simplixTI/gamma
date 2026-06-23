@@ -167,6 +167,11 @@ const PilotDashboard = () => {
 
     fetchPendingRides();
 
+    // Polling fallback: realtime UPDATE events may be blocked by RLS when a
+    // ride leaves the pending state (passenger cancels), so the pilot's list
+    // would keep stale entries. Re-fetch every 30s to drop cancelled rides.
+    const pollInterval = setInterval(fetchPendingRides, 30000);
+
     const channel = supabase
       .channel(`pilot-rides-${pilotId}`)
       .on(
@@ -208,6 +213,7 @@ const PilotDashboard = () => {
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [isPilotOnline, fetchPendingRides, dbRideToRide, pilotId, fetchActiveRides]);
