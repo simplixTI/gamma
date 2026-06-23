@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Split constants — kept in sync with platform_config table (45/45/10)
@@ -49,8 +49,11 @@ interface PayoutHistoryRow {
   key: string; // pilot_profile_id + ':' + paid_date
   pilot_profile_id: string;
   pilot_name: string;
+  pix_key: string | null;
+  pix_key_type: string | null;
   paid_date: string; // YYYY-MM-DD do paid_at
   rides_count: number;
+  gross: number;
   pilot_share: number;
 }
 
@@ -178,7 +181,7 @@ const AdminFinancial = () => {
     cutoff.setDate(cutoff.getDate() - 30);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name)')
+      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name, pix_key, pix_key_type)')
       .eq('status', 'paid')
       .gte('paid_at', cutoff.toISOString())
       .order('paid_at', { ascending: false });
@@ -188,14 +191,21 @@ const AdminFinancial = () => {
       for (const row of data) {
         if (!row.paid_at) continue;
         const id = row.pilot_profile_id as string;
-        const name = (row.pilot_profiles as { full_name?: string } | null)?.full_name ?? 'Piloto desconhecido';
+        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
+        const name = profile?.full_name ?? 'Piloto desconhecido';
         const paid_date = String(row.paid_at).slice(0, 10);
         const key = `${id}:${paid_date}`;
         const gross = Number(row.gross_amount);
         if (!grouped[key]) {
-          grouped[key] = { key, pilot_profile_id: id, pilot_name: name, paid_date, rides_count: 0, pilot_share: 0 };
+          grouped[key] = {
+            key, pilot_profile_id: id, pilot_name: name,
+            pix_key: profile?.pix_key ?? null,
+            pix_key_type: profile?.pix_key_type ?? null,
+            paid_date, rides_count: 0, gross: 0, pilot_share: 0,
+          };
         }
         grouped[key].rides_count += 1;
+        grouped[key].gross += gross;
         grouped[key].pilot_share += gross * PILOT_PCT;
       }
       setPayoutHistory(Object.values(grouped).sort((a, b) => b.paid_date.localeCompare(a.paid_date)));
@@ -217,6 +227,166 @@ const AdminFinancial = () => {
       loadPayoutHistory();
     }
     setMarkingPaid(null);
+  };
+
+  const downloadCSV = (filename: string, rows: Record<string, string | number>[]) => {
+    if (rows.length === 0) return;
+    const headers = Object.keys(rows[0]);
+    const esc = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [
+      headers.join(';'),
+      ...rows.map(r => headers.map(h => esc(r[h])).join(';')),
+    ].join('\n');
+    // BOM pra Excel reconhecer UTF-8
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const openReceiptWindow = (title: string, html: string) => {
+    const win = window.open('', '_blank', 'width=720,height=900');
+    if (!win) {
+      alert('Permita janelas pop-up pra abrir o recibo.');
+      return;
+    }
+    win.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111; padding: 32px; }
+  .header { border-bottom: 2px solid #111; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 22px; font-weight: 800; }
+  .header .meta { font-size: 12px; color: #666; text-align: right; }
+  .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+  .row .label { color: #666; }
+  .row .value { font-weight: 600; }
+  .total { display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f5f5f5; border-radius: 8px; margin-top: 24px; }
+  .total .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+  .total .value { font-size: 28px; font-weight: 800; color: #0066cc; }
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #eee; font-size: 11px; color: #999; text-align: center; }
+  .actions { margin-top: 24px; text-align: center; }
+  .actions button { padding: 10px 20px; background: #0066cc; color: white; border: 0; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  @media print { .actions { display: none; } body { padding: 16px; } }
+</style>
+</head>
+<body>
+${html}
+<div class="actions">
+  <button onclick="window.print()">Salvar como PDF / Imprimir</button>
+</div>
+</body>
+</html>`);
+    win.document.close();
+  };
+
+  const buildReceiptHtml = (params: {
+    pilotName: string;
+    pixKey: string | null;
+    pixKeyType: string | null;
+    refDate: string; // YYYY-MM-DD
+    refLabel: string; // "Data do serviço" ou "Data do repasse"
+    ridesCount: number;
+    gross: number;
+    pilotShare: number;
+    status: string;
+  }) => {
+    const fmtBR = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`;
+    const dateLabel = new Date(params.refDate + 'T12:00:00').toLocaleDateString('pt-BR');
+    const generatedAt = new Date().toLocaleString('pt-BR');
+    const pixLine = params.pixKey
+      ? `${params.pixKeyType ? params.pixKeyType.toUpperCase() : 'PIX'}: ${params.pixKey}`
+      : '<em style="color:#c87800">Sem PIX cadastrado</em>';
+    return `
+<div class="header">
+  <h1>Recibo de Repasse — Gamma</h1>
+  <div class="meta">Gerado em<br/>${generatedAt}</div>
+</div>
+<div class="row"><span class="label">Piloto</span><span class="value">${params.pilotName}</span></div>
+<div class="row"><span class="label">${params.refLabel}</span><span class="value">${dateLabel}</span></div>
+<div class="row"><span class="label">Corridas realizadas</span><span class="value">${params.ridesCount}</span></div>
+<div class="row"><span class="label">Total bruto</span><span class="value">${fmtBR(params.gross)}</span></div>
+<div class="row"><span class="label">Comissão piloto</span><span class="value">45%</span></div>
+<div class="row"><span class="label">Chave PIX</span><span class="value">${pixLine}</span></div>
+<div class="row"><span class="label">Status</span><span class="value">${params.status}</span></div>
+<div class="total">
+  <span class="label">Valor a receber</span>
+  <span class="value">${fmtBR(params.pilotShare)}</span>
+</div>
+<div class="footer">Documento gerado pelo painel administrativo Gamma. Use como comprovante de repasse para o piloto.</div>
+`;
+  };
+
+  const handleExportPendingCSV = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const visible = selectedPilot === 'all' ? pilotPayouts : pilotPayouts.filter(p => p.pilot_profile_id === selectedPilot);
+    const rows = visible.map(p => ({
+      Data: p.date,
+      Piloto: p.pilot_name,
+      Corridas: p.rides_count,
+      'Bruto (R$)': p.gross.toFixed(2).replace('.', ','),
+      'Repasse 45% (R$)': p.pilot_share.toFixed(2).replace('.', ','),
+      PIX: p.pix_key ?? '',
+      'Tipo PIX': p.pix_key_type ?? '',
+      Status: 'Pendente',
+    }));
+    downloadCSV(`repasses-pendentes-${stamp}.csv`, rows);
+  };
+
+  const handleExportHistoryCSV = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const visible = selectedPilot === 'all' ? payoutHistory : payoutHistory.filter(h => h.pilot_profile_id === selectedPilot);
+    const rows = visible.map(h => ({
+      'Data do repasse': h.paid_date,
+      Piloto: h.pilot_name,
+      Corridas: h.rides_count,
+      'Bruto (R$)': h.gross.toFixed(2).replace('.', ','),
+      'Repassado 45% (R$)': h.pilot_share.toFixed(2).replace('.', ','),
+      PIX: h.pix_key ?? '',
+      'Tipo PIX': h.pix_key_type ?? '',
+    }));
+    downloadCSV(`repasses-historico-${stamp}.csv`, rows);
+  };
+
+  const handleOpenReceipt = (p: PilotDayPayout) => {
+    const html = buildReceiptHtml({
+      pilotName: p.pilot_name,
+      pixKey: p.pix_key,
+      pixKeyType: p.pix_key_type,
+      refDate: p.date,
+      refLabel: 'Data do serviço',
+      ridesCount: p.rides_count,
+      gross: p.gross,
+      pilotShare: p.pilot_share,
+      status: 'Pendente — aguardando repasse',
+    });
+    openReceiptWindow(`Recibo ${p.pilot_name} — ${p.date}`, html);
+  };
+
+  const handleOpenHistoryReceipt = (h: PayoutHistoryRow) => {
+    const html = buildReceiptHtml({
+      pilotName: h.pilot_name,
+      pixKey: h.pix_key,
+      pixKeyType: h.pix_key_type,
+      refDate: h.paid_date,
+      refLabel: 'Data do repasse',
+      ridesCount: h.rides_count,
+      gross: h.gross,
+      pilotShare: h.pilot_share,
+      status: 'Repassado',
+    });
+    openReceiptWindow(`Recibo ${h.pilot_name} — ${h.paid_date}`, html);
   };
 
   const handleCopyPix = (pixKey: string) => {
@@ -575,13 +745,25 @@ const AdminFinancial = () => {
                   )}
                 </p>
               </div>
-              <select
-                value={selectedPilot}
-                onChange={e => setSelectedPilot(e.target.value)}
-                className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground"
-              >
-                {pilotOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedPilot}
+                  onChange={e => setSelectedPilot(e.target.value)}
+                  className="text-sm border border-border rounded-lg px-3 py-1.5 bg-card text-foreground"
+                >
+                  {pilotOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExportPendingCSV}
+                  disabled={filteredPayouts.length === 0}
+                  className="gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  CSV
+                </Button>
+              </div>
             </div>
             {payoutsLoading ? (
               <div className="space-y-2">
@@ -627,20 +809,32 @@ const AdminFinancial = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleMarkAsPaid(p)}
-                            disabled={markingPaid === p.key}
-                            className="gap-1.5"
-                          >
-                            {markingPaid === p.key ? (
-                              <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <CheckCircle className="w-3.5 h-3.5" />
-                            )}
-                            Marcar Pago
-                          </Button>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenReceipt(p)}
+                              className="gap-1 h-8 px-2"
+                              title="Gerar recibo PDF"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              Recibo
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleMarkAsPaid(p)}
+                              disabled={markingPaid === p.key}
+                              className="gap-1.5"
+                            >
+                              {markingPaid === p.key ? (
+                                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5" />
+                              )}
+                              Marcar Pago
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -652,9 +846,21 @@ const AdminFinancial = () => {
 
           {/* Histórico de Repasses — últimos 30 dias */}
           <div>
-            <div className="mb-3">
-              <h2 className="text-lg font-semibold text-foreground">Histórico de Repasses</h2>
-              <p className="text-xs text-muted-foreground">Últimos 30 dias. Usa o filtro de piloto acima.</p>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Histórico de Repasses</h2>
+                <p className="text-xs text-muted-foreground">Últimos 30 dias. Usa o filtro de piloto acima.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleExportHistoryCSV}
+                disabled={filteredHistory.length === 0}
+                className="gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                CSV
+              </Button>
             </div>
             {historyLoading ? (
               <div className="space-y-2">
@@ -673,6 +879,7 @@ const AdminFinancial = () => {
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassado</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Recibo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -682,6 +889,17 @@ const AdminFinancial = () => {
                         <td className="px-4 py-3 text-foreground">{h.pilot_name}</td>
                         <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{h.rides_count}</td>
                         <td className="px-4 py-3 text-right font-semibold text-blue-600 tabular-nums">{fmt(h.pilot_share)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenHistoryReceipt(h)}
+                            className="gap-1 h-8 px-2"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Recibo
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
