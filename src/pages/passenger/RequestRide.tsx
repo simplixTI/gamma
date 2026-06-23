@@ -289,6 +289,20 @@ const RequestRide = () => {
       }
     }
 
+    // Fair-split fields: pilot is paid 45% of GROSS, owner+simplix absorb the discount
+    const hasActiveDiscount = hasDiscount && activeDiscount && totalPrice < baseTotal;
+    const discountFields = hasActiveDiscount
+      ? {
+          gross_price: baseTotal,
+          discount_amount: baseTotal - totalPrice,
+          referral_discount_id: activeDiscount.id,
+        }
+      : {
+          gross_price: null,
+          discount_amount: 0,
+          referral_discount_id: null,
+        };
+
     setIsCreating(true);
     try {
       const { data: result, error: opError } = await safeDbOperation(async () => {
@@ -308,6 +322,7 @@ const RequestRide = () => {
               destination_lng: destination.coordinates[0],
               destination_pier_id: destination.id,
               price: totalPrice,
+              ...discountFields,
               passenger_count: passengerCount,
               estimated_time: time,
               payment_status: 'pending',
@@ -333,6 +348,7 @@ const RequestRide = () => {
               destination_lng: destination.coordinates[0],
               destination_pier_id: destination.id,
               price: totalPrice,
+              ...discountFields,
               passenger_count: passengerCount,
               estimated_time: time,
               passenger_device_id: user.id,

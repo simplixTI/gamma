@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Split constants — kept in sync with platform_config table (45/45/10)
@@ -41,6 +41,23 @@ interface PilotPendingPayout {
   owners_share: number;
 }
 
+interface AdSale {
+  id: string;
+  price: number;
+  sold_at: string;
+  duration_days: number | null;
+  advertiser_name: string | null;
+  title: string;
+}
+
+interface PaidRide {
+  id: string;
+  price: number;
+  gross_price: number | null;
+  discount_amount: number | null;
+  completed_at: string | null;
+}
+
 const StatCard = ({ icon: Icon, label, value, sub, color = 'green' }: {
   icon: React.ElementType; label: string; value: string; sub?: string; color?: string;
 }) => {
@@ -76,6 +93,10 @@ const AdminFinancial = () => {
   const [markingPaid, setMarkingPaid] = useState<string | null>(null);
   // Filter by pilot
   const [selectedPilot, setSelectedPilot] = useState<string>('all');
+  // Ad sales (100% platform revenue)
+  const [adSales, setAdSales] = useState<AdSale[]>([]);
+  // Paid rides — needed to compute fair split (pilot gets gross share, discount absorbed by owner+simplix)
+  const [paidRides, setPaidRides] = useState<PaidRide[]>([]);
 
   const loadPilotPayouts = useCallback(async () => {
     setPayoutsLoading(true);
@@ -124,7 +145,7 @@ const AdminFinancial = () => {
 
   useEffect(() => {
     const load = async () => {
-      const [pRes, wRes] = await Promise.all([
+      const [pRes, wRes, adsRes, ridesRes] = await Promise.all([
         supabase.from('payments')
           .select('id, amount, status, paid_at, created_at, ride_id')
           .order('created_at', { ascending: false })
@@ -133,11 +154,23 @@ const AdminFinancial = () => {
           .select('id, amount, type, status, created_at, description')
           .order('created_at', { ascending: false })
           .limit(100),
+        supabase.from('partner_ads')
+          .select('id, price, sold_at, duration_days, advertiser_name, title')
+          .not('sold_at', 'is', null)
+          .order('sold_at', { ascending: false })
+          .limit(50),
+        supabase.from('rides')
+          .select('id, price, gross_price, discount_amount, completed_at')
+          .eq('payment_status', 'paid')
+          .order('completed_at', { ascending: false })
+          .limit(500),
       ]);
 
       const pmts = pRes.data ?? [];
       setPayments(pmts);
       setWalletTxs(wRes.data ?? []);
+      setAdSales((adsRes.data ?? []) as AdSale[]);
+      setPaidRides((ridesRes.data ?? []) as PaidRide[]);
 
       const completed = pmts.filter(p => p.status === 'completed' && p.paid_at);
       const byDay: Record<string, DailyRevenue> = {};
@@ -159,10 +192,25 @@ const AdminFinancial = () => {
   const walletTopups = walletTxs.filter(t => t.type === 'credit' && t.status === 'completed').reduce((s, t) => s + Number(t.amount), 0);
   const todayRevenue = daily.find(d => d.date === new Date().toISOString().slice(0, 10))?.total ?? 0;
 
-  // Revenue split totals
-  const totalPilot = totalRevenue * PILOT_PCT;
-  const totalSimplix = totalRevenue * SIMPLIX_PCT;
-  const totalOwners = totalRevenue * OWNERS_PCT;
+  // Revenue split totals — fair-discount model
+  // Pilot always gets 45% of GROSS (pre-discount); owner + simplix absorb the discount
+  // proportionally from what's left after paying the pilot.
+  const totalRidesPaid = paidRides.reduce((s, r) => s + Number(r.price), 0);
+  const totalRidesGross = paidRides.reduce((s, r) => s + Number(r.gross_price ?? r.price), 0);
+  const totalDiscount = paidRides.reduce((s, r) => s + Number(r.discount_amount ?? 0), 0);
+
+  const totalPilot = totalRidesGross * PILOT_PCT;
+  const ownerSimplixPool = Math.max(0, totalRidesPaid - totalPilot);
+  const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
+  const totalOwners = ownerSimplixPool * (OWNERS_PCT / ownerSimplixSum);
+  const totalSimplix = ownerSimplixPool * (SIMPLIX_PCT / ownerSimplixSum);
+
+  // Ad sales (100% platform extra revenue)
+  const totalAdRevenue = adSales.reduce((s, a) => s + Number(a.price), 0);
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthAdRevenue = adSales
+    .filter(a => new Date(a.sold_at) >= monthStart)
+    .reduce((s, a) => s + Number(a.price), 0);
 
   // Pilot filter options
   const pilotOptions = [{ id: 'all', name: 'Todos os pilotos' }, ...pilotPayouts.map(p => ({ id: p.pilot_profile_id, name: p.pilot_name }))];
@@ -189,9 +237,55 @@ const AdminFinancial = () => {
             <StatCard icon={Wallet} label="Recargas de carteira" value={fmt(walletTopups)} color="purple" />
           </div>
 
+          {/* Ad sales — 100% platform revenue */}
+          <div>
+            <h2 className="text-lg font-semibold text-foreground mb-3">Receita de Anúncios <span className="text-xs font-normal text-muted-foreground">— 100% plataforma</span></h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+              <StatCard icon={Megaphone} label="Total vendido (anúncios)" value={fmt(totalAdRevenue)} sub={`${adSales.length} ${adSales.length === 1 ? 'venda' : 'vendas'}`} color="green" />
+              <StatCard icon={TrendingUp} label="Anúncios — este mês" value={fmt(monthAdRevenue)} color="blue" />
+            </div>
+            {adSales.length > 0 && (
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Cliente</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Anúncio</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Pacote</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adSales.slice(0, 10).map(a => (
+                      <tr key={a.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {new Date(a.sold_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="px-4 py-3 text-foreground">{a.advertiser_name ?? <span className="text-muted-foreground italic">—</span>}</td>
+                        <td className="px-4 py-3 text-foreground truncate max-w-[200px]">{a.title}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{a.duration_days ? `${a.duration_days} dias` : '—'}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-emerald-600 tabular-nums">{fmt(Number(a.price))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Revenue split */}
           <div>
-            <h2 className="text-lg font-semibold text-foreground mb-3">Divisão de Receita</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-foreground">Divisão de Receita</h2>
+              {totalDiscount > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Descontos absorvidos:</span>{' '}
+                  <span className="font-bold text-amber-600 tabular-nums">{fmt(totalDiscount)}</span>
+                  <span className="ml-1">(donos + Simplix)</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
@@ -203,7 +297,7 @@ const AdminFinancial = () => {
                     <p className="text-xl font-bold text-foreground">{fmt(totalPilot)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">45% de cada corrida vai para o piloto</p>
+                <p className="text-xs text-muted-foreground">45% do valor bruto (antes do desconto)</p>
               </div>
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
@@ -215,7 +309,7 @@ const AdminFinancial = () => {
                     <p className="text-xl font-bold text-foreground">{fmt(totalOwners)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Repasse para os donos dos barcos</p>
+                <p className="text-xs text-muted-foreground">Após descontos absorvidos proporcionalmente</p>
               </div>
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
@@ -227,7 +321,7 @@ const AdminFinancial = () => {
                     <p className="text-xl font-bold text-foreground">{fmt(totalSimplix)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Taxa da plataforma Simplix</p>
+                <p className="text-xs text-muted-foreground">Após descontos absorvidos proporcionalmente</p>
               </div>
             </div>
           </div>

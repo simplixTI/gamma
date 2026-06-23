@@ -33,6 +33,16 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
 
   if (ads.length === 0) return null;
 
+  const recordClick = (adId: string) => {
+    // Fire-and-forget — never block navigation if logging fails.
+    // user_id falls back to NULL for anonymous clicks.
+    supabase.auth.getUser().then(({ data }) => {
+      supabase.from('ad_clicks').insert({ ad_id: adId, user_id: data.user?.id ?? null }).then(({ error }) => {
+        if (error) console.warn('ad_clicks insert failed:', error);
+      });
+    });
+  };
+
   return (
     <section className="space-y-2">
       {ads.map(ad => (
@@ -42,7 +52,10 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
           target="_blank"
           rel="noopener noreferrer"
           className="block rounded-2xl overflow-hidden border border-border bg-card active:opacity-80 transition-opacity"
-          onClick={(e) => { if (!ad.link_url?.startsWith('http')) e.preventDefault(); }}
+          onClick={(e) => {
+            recordClick(ad.id);
+            if (!ad.link_url?.startsWith('http')) e.preventDefault();
+          }}
         >
           {ad.image_url && (
             <div className="relative aspect-[2/1] overflow-hidden bg-white">
