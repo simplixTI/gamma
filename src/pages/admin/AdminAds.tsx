@@ -159,7 +159,16 @@ const AdminAds = () => {
       };
 
       if (editId) {
-        const { error } = await supabase.from('partner_ads').update(payload).eq('id', editId);
+        // Preserve original sale date if it exists; stamp NOW if this edit is what
+        // turned a courtesy/draft ad into a sold one. Without this, ads edited from
+        // courtesy → sold stayed with sold_at = NULL and were filtered out of the
+        // Financial dashboard.
+        const existing = ads.find(a => a.id === editId);
+        const updatePayload = {
+          ...payload,
+          sold_at: isPaid ? (existing?.sold_at ?? now.toISOString()) : null,
+        };
+        const { error } = await supabase.from('partner_ads').update(updatePayload).eq('id', editId);
         if (error) throw error;
         toast.success('Anúncio atualizado');
       } else {
