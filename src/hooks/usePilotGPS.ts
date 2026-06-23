@@ -137,12 +137,14 @@ export const usePilotGPS = ({ rideId, pilotId, isActive }: UsePilotGPSOptions) =
       if (pilotId && !activeRideRef.current) {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-        // Best-effort: use Supabase SDK (works during normal unmount)
+        // Best-effort: use Supabase SDK (works during normal unmount).
+        // PostgrestBuilder is thenable but not a Promise, so .catch() throws
+        // TypeError — use the 2-arg form of .then() to swallow errors.
         void supabase
           .from('locations')
           .update({ is_available: false, heading: null, speed: null })
           .eq('pilot_id', pilotId)
-          .catch(() => {});
+          .then(() => {}, () => {});
         // Keepalive fetch as fallback for page unload / app kill scenarios
         // Use the cached user session token (not the anon key) so RLS allows the update
         supabase.auth.getSession().then(({ data: { session } }) => {
