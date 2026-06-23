@@ -50,7 +50,7 @@ const AdDisplay = ({ position }: AdDisplayProps) => {
                 src={ad.image_url}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover blur-3xl scale-150 opacity-60"
+                className="absolute inset-0 w-full h-full object-cover blur-2xl scale-125 opacity-90 saturate-150"
               />
               <img
                 src={ad.image_url}
