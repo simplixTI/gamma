@@ -238,10 +238,10 @@ const PilotDashboard = () => {
   }, []);
 
   const drawerStats = useMemo(() => ({
-    ridestoday: stats.ridesToday,
+    ridestoday: stats.totalRides,
     earnings: stats.earnings,
     rating: stats.rating,
-  }), [stats.ridesToday, stats.earnings, stats.rating]);
+  }), [stats.totalRides, stats.earnings, stats.rating]);
 
   const handleAcceptRide = async (rideId: string) => {
     // Check and acquire lock to prevent double-accept

@@ -63,9 +63,12 @@ const PilotDrawer = ({ open, onOpenChange, stats }: PilotDrawerProps) => {
                   {pilotProfile?.photo_url ? (
                     <img
                       src={pilotProfile.photo_url}
-                      alt="Profile"
+                      alt=""
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
                     />
                   ) : (
                     <Ship className="w-7 h-7" />
