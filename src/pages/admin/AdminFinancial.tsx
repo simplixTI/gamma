@@ -32,13 +32,26 @@ interface DailyRevenue {
   count: number;
 }
 
-interface PilotPendingPayout {
+interface PilotDayPayout {
+  key: string; // pilot_profile_id + ':' + date
   pilot_profile_id: string;
   pilot_name: string;
+  pix_key: string | null;
+  pix_key_type: string | null;
+  date: string; // YYYY-MM-DD do created_at
+  rides_count: number;
   gross: number;
   pilot_share: number;
-  simplix_share: number;
-  owners_share: number;
+  earning_ids: string[];
+}
+
+interface PayoutHistoryRow {
+  key: string; // pilot_profile_id + ':' + paid_date
+  pilot_profile_id: string;
+  pilot_name: string;
+  paid_date: string; // YYYY-MM-DD do paid_at
+  rides_count: number;
+  pilot_share: number;
 }
 
 interface AdSale {
@@ -90,11 +103,14 @@ const AdminFinancial = () => {
   const [walletTxs, setWalletTxs] = useState<WalletTx[]>([]);
   const [daily, setDaily] = useState<DailyRevenue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pilotPayouts, setPilotPayouts] = useState<PilotPendingPayout[]>([]);
+  const [pilotPayouts, setPilotPayouts] = useState<PilotDayPayout[]>([]);
   const [payoutsLoading, setPayoutsLoading] = useState(true);
   const [markingPaid, setMarkingPaid] = useState<string | null>(null);
   // Filter by pilot
   const [selectedPilot, setSelectedPilot] = useState<string>('all');
+  // Histórico de repasses já efetuados (últimos 30 dias)
+  const [payoutHistory, setPayoutHistory] = useState<PayoutHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   // Ad sales (100% platform revenue)
   const [adSales, setAdSales] = useState<AdSale[]>([]);
   // Paid rides — needed to compute fair split (pilot gets gross share, discount absorbed by owner+simplix)
@@ -104,46 +120,108 @@ const AdminFinancial = () => {
     setPayoutsLoading(true);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('pilot_profile_id, gross_amount, net_amount, pilot_profiles(full_name)')
-      .eq('status', 'pending');
+      .select('id, pilot_profile_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
 
     if (data) {
-      const grouped: Record<string, PilotPendingPayout> = {};
+      const grouped: Record<string, PilotDayPayout> = {};
       for (const row of data) {
         const id = row.pilot_profile_id as string;
-        const name = (row.pilot_profiles as { full_name?: string } | null)?.full_name ?? 'Piloto desconhecido';
+        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
+        const name = profile?.full_name ?? 'Piloto desconhecido';
+        const date = String(row.created_at).slice(0, 10);
+        const key = `${id}:${date}`;
         const gross = Number(row.gross_amount);
-        if (!grouped[id]) {
-          grouped[id] = { pilot_profile_id: id, pilot_name: name, gross: 0, pilot_share: 0, simplix_share: 0, owners_share: 0 };
+        if (!grouped[key]) {
+          grouped[key] = {
+            key,
+            pilot_profile_id: id,
+            pilot_name: name,
+            pix_key: profile?.pix_key ?? null,
+            pix_key_type: profile?.pix_key_type ?? null,
+            date,
+            rides_count: 0,
+            gross: 0,
+            pilot_share: 0,
+            earning_ids: [],
+          };
         }
-        grouped[id].gross += gross;
-        grouped[id].pilot_share += gross * PILOT_PCT;
-        grouped[id].simplix_share += gross * SIMPLIX_PCT;
-        grouped[id].owners_share += gross * OWNERS_PCT;
+        grouped[key].rides_count += 1;
+        grouped[key].gross += gross;
+        grouped[key].pilot_share += gross * PILOT_PCT;
+        grouped[key].earning_ids.push(row.id as string);
       }
-      setPilotPayouts(Object.values(grouped));
+      // Mais recente primeiro
+      setPilotPayouts(Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)));
     }
     setPayoutsLoading(false);
   }, []);
 
-  const handleMarkAsPaid = async (pilotProfileId: string) => {
-    setMarkingPaid(pilotProfileId);
+  const loadPayoutHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const { data } = await supabase
+      .from('pilot_earnings')
+      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name)')
+      .eq('status', 'paid')
+      .gte('paid_at', cutoff.toISOString())
+      .order('paid_at', { ascending: false });
+
+    if (data) {
+      const grouped: Record<string, PayoutHistoryRow> = {};
+      for (const row of data) {
+        if (!row.paid_at) continue;
+        const id = row.pilot_profile_id as string;
+        const name = (row.pilot_profiles as { full_name?: string } | null)?.full_name ?? 'Piloto desconhecido';
+        const paid_date = String(row.paid_at).slice(0, 10);
+        const key = `${id}:${paid_date}`;
+        const gross = Number(row.gross_amount);
+        if (!grouped[key]) {
+          grouped[key] = { key, pilot_profile_id: id, pilot_name: name, paid_date, rides_count: 0, pilot_share: 0 };
+        }
+        grouped[key].rides_count += 1;
+        grouped[key].pilot_share += gross * PILOT_PCT;
+      }
+      setPayoutHistory(Object.values(grouped).sort((a, b) => b.paid_date.localeCompare(a.paid_date)));
+    }
+    setHistoryLoading(false);
+  }, []);
+
+  const handleMarkAsPaid = async (group: PilotDayPayout) => {
+    setMarkingPaid(group.key);
     const { error } = await supabase
       .from('pilot_earnings')
       .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('pilot_profile_id', pilotProfileId)
-      .eq('status', 'pending');
+      .in('id', group.earning_ids);
     if (error) {
       console.error('Error marking as paid:', error);
     } else {
-      setPilotPayouts((prev) => prev.filter((p) => p.pilot_profile_id !== pilotProfileId));
+      setPilotPayouts((prev) => prev.filter((p) => p.key !== group.key));
+      // Recarrega o histórico pra mostrar o repasse recém-marcado
+      loadPayoutHistory();
     }
     setMarkingPaid(null);
   };
 
+  const handleCopyPix = (pixKey: string) => {
+    navigator.clipboard?.writeText(pixKey).catch(() => {
+      // Fallback: cria textarea e copia
+      const ta = document.createElement('textarea');
+      ta.value = pixKey;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    });
+  };
+
   useEffect(() => {
     loadPilotPayouts();
-  }, [loadPilotPayouts]);
+    loadPayoutHistory();
+  }, [loadPilotPayouts, loadPayoutHistory]);
 
   useEffect(() => {
     const load = async () => {
@@ -263,9 +341,16 @@ const AdminFinancial = () => {
     .filter(a => new Date(a.sold_at) >= monthStart)
     .reduce((s, a) => s + Number(a.price), 0);
 
-  // Pilot filter options
-  const pilotOptions = [{ id: 'all', name: 'Todos os pilotos' }, ...pilotPayouts.map(p => ({ id: p.pilot_profile_id, name: p.pilot_name }))];
+  // Pilot filter options — deduplicar (varias linhas dia x piloto)
+  const uniquePilots = Array.from(
+    new Map(pilotPayouts.map(p => [p.pilot_profile_id, p.pilot_name])).entries()
+  ).map(([id, name]) => ({ id, name }));
+  const pilotOptions = [{ id: 'all', name: 'Todos os pilotos' }, ...uniquePilots];
   const filteredPayouts = selectedPilot === 'all' ? pilotPayouts : pilotPayouts.filter(p => p.pilot_profile_id === selectedPilot);
+  const filteredHistory = selectedPilot === 'all' ? payoutHistory : payoutHistory.filter(p => p.pilot_profile_id === selectedPilot);
+  const totalPendingPayout = filteredPayouts.reduce((s, p) => s + p.pilot_share, 0);
+  const fmtDate = (iso: string) =>
+    new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
   return (
     <div className="space-y-6">
@@ -377,10 +462,19 @@ const AdminFinancial = () => {
             </div>
           </div>
 
-          {/* Pilot Payouts */}
+          {/* Pilot Payouts — repasses diarios pendentes */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-foreground">Pagamentos a Pilotos</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Pagamentos a Pilotos</h2>
+                <p className="text-xs text-muted-foreground">
+                  Repasses pendentes agrupados por dia. {filteredPayouts.length > 0 && (
+                    <span className="font-semibold text-foreground">
+                      Total a pagar: <span className="text-blue-600 tabular-nums">{fmt(totalPendingPayout)}</span>
+                    </span>
+                  )}
+                </p>
+              </div>
               <select
                 value={selectedPilot}
                 onChange={e => setSelectedPilot(e.target.value)}
@@ -398,35 +492,49 @@ const AdminFinancial = () => {
                 Nenhum pagamento pendente a pilotos.
               </div>
             ) : (
-              <div className="bg-card rounded-xl border border-border overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="bg-card rounded-xl border border-border overflow-x-auto">
+                <table className="w-full text-sm min-w-[760px]">
                   <thead>
                     <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Dia</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Piloto (45%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Dono barco (45%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (10%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Ação</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Bruto</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassar (45%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">PIX</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Ação</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredPayouts.map((p) => (
-                      <tr key={p.pilot_profile_id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                      <tr key={p.key} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-3 text-foreground whitespace-nowrap">{fmtDate(p.date)}</td>
                         <td className="px-4 py-3 font-medium text-foreground">{p.pilot_name}</td>
-                        <td className="px-4 py-3 text-foreground">{fmt(p.gross)}</td>
-                        <td className="px-4 py-3 font-semibold text-blue-600">{fmt(p.pilot_share)}</td>
-                        <td className="px-4 py-3 font-semibold text-green-600">{fmt(p.owners_share)}</td>
-                        <td className="px-4 py-3 font-semibold text-purple-600">{fmt(p.simplix_share)}</td>
+                        <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{p.rides_count}</td>
+                        <td className="px-4 py-3 text-right text-foreground tabular-nums">{fmt(p.gross)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-blue-600 tabular-nums">{fmt(p.pilot_share)}</td>
                         <td className="px-4 py-3">
+                          {p.pix_key ? (
+                            <button
+                              onClick={() => handleCopyPix(p.pix_key!)}
+                              className="text-xs font-mono text-foreground hover:text-blue-600 underline decoration-dotted"
+                              title="Clique para copiar"
+                            >
+                              {p.pix_key_type ? `${p.pix_key_type}: ` : ''}{p.pix_key}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-amber-600 italic">sem PIX cadastrado</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleMarkAsPaid(p.pilot_profile_id)}
-                            disabled={markingPaid === p.pilot_profile_id}
+                            onClick={() => handleMarkAsPaid(p)}
+                            disabled={markingPaid === p.key}
                             className="gap-1.5"
                           >
-                            {markingPaid === p.pilot_profile_id ? (
+                            {markingPaid === p.key ? (
                               <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <CheckCircle className="w-3.5 h-3.5" />
@@ -434,6 +542,46 @@ const AdminFinancial = () => {
                             Marcar Pago
                           </Button>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Histórico de Repasses — últimos 30 dias */}
+          <div>
+            <div className="mb-3">
+              <h2 className="text-lg font-semibold text-foreground">Histórico de Repasses</h2>
+              <p className="text-xs text-muted-foreground">Últimos 30 dias. Usa o filtro de piloto acima.</p>
+            </div>
+            {historyLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => <div key={i} className="h-12 bg-muted animate-pulse rounded-xl" />)}
+              </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="bg-card rounded-xl border border-border p-6 text-center text-muted-foreground text-sm">
+                Nenhum repasse marcado como pago nos últimos 30 dias.
+              </div>
+            ) : (
+              <div className="bg-card rounded-xl border border-border overflow-x-auto">
+                <table className="w-full text-sm min-w-[520px]">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data do repasse</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredHistory.map((h) => (
+                      <tr key={h.key} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-3 text-foreground whitespace-nowrap">{fmtDate(h.paid_date)}</td>
+                        <td className="px-4 py-3 text-foreground">{h.pilot_name}</td>
+                        <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{h.rides_count}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-blue-600 tabular-nums">{fmt(h.pilot_share)}</td>
                       </tr>
                     ))}
                   </tbody>
