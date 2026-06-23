@@ -277,21 +277,30 @@ const SearchingPilot = () => {
       </div>
 
       {/* Searching overlay */}
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col">
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="p-4 safe-area-top">
+        <header className="p-4 safe-area-top flex items-center justify-between gap-3">
           <Button
             variant="ghost"
             size="icon"
             onClick={handleCancel}
-            className="bg-card shadow-md rounded-full"
+            className="bg-card shadow-md rounded-full flex-shrink-0"
+            aria-label="Cancelar corrida"
           >
             <X className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={handleCancel}
+            className="bg-card shadow-md rounded-full h-10 px-4 text-destructive hover:text-destructive hover:bg-destructive/10 text-sm font-semibold"
+          >
+            <X className="w-4 h-4 mr-1.5" />
+            Cancelar corrida
           </Button>
         </header>
 
         {/* Center content */}
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-6 py-4">
           {/* Animated search indicator */}
           <div className="relative mb-8">
             {/* Outer rings */}
@@ -337,8 +346,8 @@ const SearchingPilot = () => {
         </div>
 
         {/* Bottom card */}
-        <div className="p-4 safe-area-bottom">
-          <div className="bg-card rounded-2xl shadow-lg p-4 mb-4">
+        <div className="p-4 safe-area-bottom flex-shrink-0">
+          <div className="bg-card rounded-2xl shadow-lg p-4 mb-3">
             {/* Route info */}
             <div className="flex items-start gap-3 mb-4">
               <div className="flex flex-col items-center">
@@ -370,17 +379,19 @@ const SearchingPilot = () => {
             </div>
           </div>
 
-          <AdDisplay position="searching" />
-
           <Button
             variant="ghost"
             fullWidth
             onClick={handleCancel}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-12"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-12 border border-destructive/20"
           >
             <X className="w-5 h-5 mr-2" />
             Cancelar solicitação
           </Button>
+
+          <div className="mt-3">
+            <AdDisplay position="searching" />
+          </div>
         </div>
       </div>
 
