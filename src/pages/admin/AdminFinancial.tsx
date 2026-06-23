@@ -3,10 +3,23 @@ import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Split constants — kept in sync with platform_config table (45/45/10)
+// Split constants — kept in sync with platform_config table
+// Gamma boats (pilot_type='pilot'):       pilot 45% / owners 45% / simplix 10%
+// Partner boats (pilot_type='partner_boat'): owner 60% / simplix 40%
 const PILOT_PCT = 0.45;
 const SIMPLIX_PCT = 0.10;
 const OWNERS_PCT = 0.45;
+const PARTNER_BOAT_PCT = 0.60;
+
+type PilotType = 'pilot' | 'partner_boat';
+
+const sharePercentFor = (t: PilotType | null | undefined): number =>
+  t === 'partner_boat' ? PARTNER_BOAT_PCT : PILOT_PCT;
+
+const PILOT_TYPE_LABEL: Record<PilotType, string> = {
+  pilot: 'Piloto Gamma',
+  partner_boat: 'Barco Parceiro',
+};
 
 interface PaymentRow {
   id: string;
@@ -36,6 +49,8 @@ interface PilotDayPayout {
   key: string; // pilot_profile_id + ':' + date
   pilot_profile_id: string;
   pilot_name: string;
+  pilot_type: PilotType;
+  share_percent: number; // 0.45 ou 0.60
   pix_key: string | null;
   pix_key_type: string | null;
   date: string; // YYYY-MM-DD do created_at
@@ -49,6 +64,8 @@ interface PayoutHistoryRow {
   key: string; // pilot_profile_id + ':' + paid_date
   pilot_profile_id: string;
   pilot_name: string;
+  pilot_type: PilotType;
+  share_percent: number;
   pix_key: string | null;
   pix_key_type: string | null;
   paid_date: string; // YYYY-MM-DD do paid_at
@@ -137,7 +154,7 @@ const AdminFinancial = () => {
     setPayoutsLoading(true);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('id, pilot_profile_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type)')
+      .select('id, pilot_profile_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -145,8 +162,10 @@ const AdminFinancial = () => {
       const grouped: Record<string, PilotDayPayout> = {};
       for (const row of data) {
         const id = row.pilot_profile_id as string;
-        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
+        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
         const name = profile?.full_name ?? 'Piloto desconhecido';
+        const ptype: PilotType = profile?.pilot_type ?? 'pilot';
+        const sharePct = sharePercentFor(ptype);
         const date = String(row.created_at).slice(0, 10);
         const key = `${id}:${date}`;
         const gross = Number(row.gross_amount);
@@ -155,6 +174,8 @@ const AdminFinancial = () => {
             key,
             pilot_profile_id: id,
             pilot_name: name,
+            pilot_type: ptype,
+            share_percent: sharePct,
             pix_key: profile?.pix_key ?? null,
             pix_key_type: profile?.pix_key_type ?? null,
             date,
@@ -166,7 +187,7 @@ const AdminFinancial = () => {
         }
         grouped[key].rides_count += 1;
         grouped[key].gross += gross;
-        grouped[key].pilot_share += gross * PILOT_PCT;
+        grouped[key].pilot_share += gross * sharePct;
         grouped[key].earning_ids.push(row.id as string);
       }
       // Mais recente primeiro
@@ -181,7 +202,7 @@ const AdminFinancial = () => {
     cutoff.setDate(cutoff.getDate() - 30);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name, pix_key, pix_key_type)')
+      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
       .eq('status', 'paid')
       .gte('paid_at', cutoff.toISOString())
       .order('paid_at', { ascending: false });
@@ -191,14 +212,18 @@ const AdminFinancial = () => {
       for (const row of data) {
         if (!row.paid_at) continue;
         const id = row.pilot_profile_id as string;
-        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
+        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
         const name = profile?.full_name ?? 'Piloto desconhecido';
+        const ptype: PilotType = profile?.pilot_type ?? 'pilot';
+        const sharePct = sharePercentFor(ptype);
         const paid_date = String(row.paid_at).slice(0, 10);
         const key = `${id}:${paid_date}`;
         const gross = Number(row.gross_amount);
         if (!grouped[key]) {
           grouped[key] = {
             key, pilot_profile_id: id, pilot_name: name,
+            pilot_type: ptype,
+            share_percent: sharePct,
             pix_key: profile?.pix_key ?? null,
             pix_key_type: profile?.pix_key_type ?? null,
             paid_date, rides_count: 0, gross: 0, pilot_share: 0,
@@ -206,7 +231,7 @@ const AdminFinancial = () => {
         }
         grouped[key].rides_count += 1;
         grouped[key].gross += gross;
-        grouped[key].pilot_share += gross * PILOT_PCT;
+        grouped[key].pilot_share += gross * sharePct;
       }
       setPayoutHistory(Object.values(grouped).sort((a, b) => b.paid_date.localeCompare(a.paid_date)));
     }
@@ -293,6 +318,8 @@ ${html}
 
   const buildReceiptHtml = (params: {
     pilotName: string;
+    pilotType: PilotType;
+    sharePercent: number; // 0.45 ou 0.60
     pixKey: string | null;
     pixKeyType: string | null;
     refDate: string; // YYYY-MM-DD
@@ -308,16 +335,19 @@ ${html}
     const pixLine = params.pixKey
       ? `${params.pixKeyType ? params.pixKeyType.toUpperCase() : 'PIX'}: ${params.pixKey}`
       : '<em style="color:#c87800">Sem PIX cadastrado</em>';
+    const pctLabel = `${(params.sharePercent * 100).toFixed(0)}%`;
+    const recipientLabel = params.pilotType === 'partner_boat' ? 'Repasse barco parceiro' : 'Comissão piloto';
     return `
 <div class="header">
   <h1>Recibo de Repasse — Gamma</h1>
   <div class="meta">Gerado em<br/>${generatedAt}</div>
 </div>
 <div class="row"><span class="label">Piloto</span><span class="value">${params.pilotName}</span></div>
+<div class="row"><span class="label">Tipo</span><span class="value">${PILOT_TYPE_LABEL[params.pilotType]}</span></div>
 <div class="row"><span class="label">${params.refLabel}</span><span class="value">${dateLabel}</span></div>
 <div class="row"><span class="label">Corridas realizadas</span><span class="value">${params.ridesCount}</span></div>
 <div class="row"><span class="label">Total bruto</span><span class="value">${fmtBR(params.gross)}</span></div>
-<div class="row"><span class="label">Comissão piloto</span><span class="value">45%</span></div>
+<div class="row"><span class="label">${recipientLabel}</span><span class="value">${pctLabel}</span></div>
 <div class="row"><span class="label">Chave PIX</span><span class="value">${pixLine}</span></div>
 <div class="row"><span class="label">Status</span><span class="value">${params.status}</span></div>
 <div class="total">
@@ -334,9 +364,11 @@ ${html}
     const rows = visible.map(p => ({
       Data: p.date,
       Piloto: p.pilot_name,
+      Tipo: PILOT_TYPE_LABEL[p.pilot_type],
+      '%': `${(p.share_percent * 100).toFixed(0)}%`,
       Corridas: p.rides_count,
       'Bruto (R$)': p.gross.toFixed(2).replace('.', ','),
-      'Repasse 45% (R$)': p.pilot_share.toFixed(2).replace('.', ','),
+      'Repasse (R$)': p.pilot_share.toFixed(2).replace('.', ','),
       PIX: p.pix_key ?? '',
       'Tipo PIX': p.pix_key_type ?? '',
       Status: 'Pendente',
@@ -350,9 +382,11 @@ ${html}
     const rows = visible.map(h => ({
       'Data do repasse': h.paid_date,
       Piloto: h.pilot_name,
+      Tipo: PILOT_TYPE_LABEL[h.pilot_type],
+      '%': `${(h.share_percent * 100).toFixed(0)}%`,
       Corridas: h.rides_count,
       'Bruto (R$)': h.gross.toFixed(2).replace('.', ','),
-      'Repassado 45% (R$)': h.pilot_share.toFixed(2).replace('.', ','),
+      'Repassado (R$)': h.pilot_share.toFixed(2).replace('.', ','),
       PIX: h.pix_key ?? '',
       'Tipo PIX': h.pix_key_type ?? '',
     }));
@@ -362,6 +396,8 @@ ${html}
   const handleOpenReceipt = (p: PilotDayPayout) => {
     const html = buildReceiptHtml({
       pilotName: p.pilot_name,
+      pilotType: p.pilot_type,
+      sharePercent: p.share_percent,
       pixKey: p.pix_key,
       pixKeyType: p.pix_key_type,
       refDate: p.date,
@@ -377,6 +413,8 @@ ${html}
   const handleOpenHistoryReceipt = (h: PayoutHistoryRow) => {
     const html = buildReceiptHtml({
       pilotName: h.pilot_name,
+      pilotType: h.pilot_type,
+      sharePercent: h.share_percent,
       pixKey: h.pix_key,
       pixKeyType: h.pix_key_type,
       refDate: h.paid_date,
@@ -780,9 +818,10 @@ ${html}
                     <tr className="border-b border-border bg-muted/50">
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Dia</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Tipo</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassar (45%)</th>
+                      <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassar</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">PIX</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Ação</th>
                     </tr>
@@ -792,6 +831,11 @@ ${html}
                       <tr key={p.key} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-4 py-3 text-foreground whitespace-nowrap">{fmtDate(p.date)}</td>
                         <td className="px-4 py-3 font-medium text-foreground">{p.pilot_name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${p.pilot_type === 'partner_boat' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-blue-500/10 text-blue-600 border-blue-500/30'}`}>
+                            {PILOT_TYPE_LABEL[p.pilot_type]} {(p.share_percent * 100).toFixed(0)}%
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{p.rides_count}</td>
                         <td className="px-4 py-3 text-right text-foreground tabular-nums">{fmt(p.gross)}</td>
                         <td className="px-4 py-3 text-right font-bold text-blue-600 tabular-nums">{fmt(p.pilot_share)}</td>

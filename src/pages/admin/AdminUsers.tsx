@@ -21,6 +21,8 @@ interface PassengerRow {
   created_at: string;
 }
 
+type PilotType = 'pilot' | 'partner_boat';
+
 interface PilotRow {
   id: string;
   user_id: string;
@@ -35,6 +37,7 @@ interface PilotRow {
   is_active: boolean;
   boat_type: string;
   boat_identification: string;
+  pilot_type: PilotType;
   created_at: string;
 }
 
@@ -52,6 +55,7 @@ interface PilotForm {
   cpf: string;
   boat_type: string;
   boat_identification: string;
+  pilot_type: PilotType;
 }
 
 const EMPTY_PASSENGER_FORM: PassengerForm = {
@@ -68,6 +72,17 @@ const EMPTY_PILOT_FORM: PilotForm = {
   cpf: '',
   boat_type: '',
   boat_identification: '',
+  pilot_type: 'pilot',
+};
+
+const PILOT_TYPE_LABEL: Record<PilotType, string> = {
+  pilot: 'Piloto Gamma',
+  partner_boat: 'Barco Parceiro',
+};
+
+const PILOT_TYPE_BADGE: Record<PilotType, string> = {
+  pilot: 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+  partner_boat: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
 };
 
 const approvalColor: Record<string, string> = {
@@ -138,7 +153,7 @@ const AdminUsers = () => {
       supabase.from('pilot_profiles').select('count', { count: 'exact', head: true }),
       supabase
         .from('pilot_profiles')
-        .select('id, user_id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, created_at')
+        .select('id, user_id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, pilot_type, created_at')
         .order('created_at', { ascending: false })
         .range(from, to),
     ]);
@@ -280,6 +295,7 @@ const AdminUsers = () => {
       cpf: p.cpf,
       boat_type: p.boat_type ?? '',
       boat_identification: p.boat_identification ?? '',
+      pilot_type: p.pilot_type ?? 'pilot',
     });
     setEditingPilotId(p.id);
     setPilotModal('edit');
@@ -301,7 +317,7 @@ const AdminUsers = () => {
       const { data, error } = await supabase
         .from('pilot_profiles')
         .insert([{ ...pilotForm, approval_status: 'pending', is_active: false }])
-        .select('id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, created_at')
+        .select('id, user_id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, pilot_type, created_at')
         .single();
       if (error) {
         toast.error('Erro ao criar piloto: ' + error.message);
@@ -512,6 +528,7 @@ const AdminUsers = () => {
                 <thead>
                   <tr className="border-b border-border bg-muted/50">
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Nome</th>
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Tipo</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium hidden md:table-cell">E-mail</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Status</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium hidden lg:table-cell">Corridas</th>
@@ -521,9 +538,16 @@ const AdminUsers = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPilots.map(p => (
+                  {filteredPilots.map(p => {
+                    const ptype: PilotType = (p.pilot_type ?? 'pilot') as PilotType;
+                    return (
                     <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-medium text-foreground">{p.full_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${PILOT_TYPE_BADGE[ptype]}`}>
+                          {PILOT_TYPE_LABEL[ptype]}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{p.email}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${approvalColor[p.approval_status] ?? 'bg-muted text-muted-foreground'}`}>
@@ -579,10 +603,11 @@ const AdminUsers = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {filteredPilots.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                         Nenhum piloto encontrado
                       </td>
                     </tr>
@@ -756,6 +781,24 @@ const AdminUsers = () => {
                   onChange={e => setPilotForm(f => ({ ...f, cpf: e.target.value }))}
                   placeholder="000.000.000-00"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="pi-pilot_type">Modelo de repasse <span className="text-destructive">*</span></Label>
+                <select
+                  id="pi-pilot_type"
+                  value={pilotForm.pilot_type}
+                  onChange={e => setPilotForm(f => ({ ...f, pilot_type: e.target.value as PilotType }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="pilot">Piloto Gamma (recebe 45%)</option>
+                  <option value="partner_boat">Barco Parceiro (recebe 60%)</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {pilotForm.pilot_type === 'partner_boat'
+                    ? 'Dono do próprio barco. Split: 60% dono / 40% plataforma.'
+                    : 'Funcionário Gamma dirigindo barco da plataforma. Split: 45% piloto / 45% dono Gamma / 10% plataforma.'}
+                </p>
               </div>
 
               <div className="space-y-1.5">
