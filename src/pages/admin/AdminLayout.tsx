@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
   LayoutDashboard, Users, UserCheck, DollarSign,
-  Megaphone, LogOut, Menu, X, Loader2, Route,
+  Megaphone, LogOut, Menu, X, Loader2, Route, Ticket,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ const navItems = [
   { to: '/admin/rides', label: 'Corridas', icon: Route },
   { to: '/admin/financial', label: 'Financeiro', icon: DollarSign },
   { to: '/admin/ads', label: 'Anúncios', icon: Megaphone },
+  { to: '/admin/vouchers', label: 'Vouchers', icon: Ticket },
 ];
 
 const AdminLayout = () => {

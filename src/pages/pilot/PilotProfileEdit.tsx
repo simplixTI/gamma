@@ -58,7 +58,9 @@ const PilotProfileEdit = () => {
   const [savingPayout, setSavingPayout] = useState(false);
   const [isNewProfile, setIsNewProfile] = useState(false);
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [photoUploading, setPhotoUploading] = useState(false);
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -78,9 +80,33 @@ const PilotProfileEdit = () => {
       return;
     }
 
-    // File is valid — preview it locally
-    const objectUrl = URL.createObjectURL(file);
-    setProfile((prev) => ({ ...prev, photo_url: objectUrl }));
+    if (!pilotId) {
+      toast.error('Perfil ainda carregando, aguarde um instante.');
+      e.target.value = '';
+      return;
+    }
+
+    // Upload to Supabase Storage and persist the public URL.
+    // Previously this used URL.createObjectURL (blob:...) which only lives in the
+    // current browser session — that's why the photo vanished after logout.
+    setPhotoUploading(true);
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${pilotId}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      setProfile((prev) => ({ ...prev, photo_url: urlData.publicUrl }));
+      toast.success('Foto enviada — clique em Salvar para confirmar');
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      toast.error('Erro ao enviar foto. Tente novamente.');
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
+    }
   };
 
   useEffect(() => {
@@ -235,10 +261,16 @@ const PilotProfileEdit = () => {
             ) : (
               <User className="w-12 h-12 text-muted-foreground" />
             )}
+            {photoUploading && (
+              <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
           <button
-            className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-md"
+            className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-md disabled:opacity-50"
             onClick={() => photoInputRef.current?.click()}
+            disabled={photoUploading}
             type="button"
           >
             <Camera className="w-4 h-4 text-primary-foreground" />
