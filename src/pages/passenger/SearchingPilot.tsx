@@ -372,10 +372,8 @@ const SearchingPilot = () => {
             </div>
           </div>
 
-          {/* Anuncio constrained — altura maxima fixa pra nao empurrar nada */}
-          <div className="max-h-28 overflow-hidden rounded-2xl">
-            <AdDisplay position="searching" />
-          </div>
+          {/* Anuncio / curiosidade — carrossel auto-rotativo, altura natural */}
+          <AdDisplay position="searching" />
         </div>
       </div>
 
