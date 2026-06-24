@@ -644,10 +644,17 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   }, []);
 
   const completedPayments = payments.filter(p => p.status === 'completed');
-  const totalRevenue = completedPayments.reduce((s, p) => s + Number(p.amount), 0);
+  const mpRevenue = completedPayments.reduce((s, p) => s + Number(p.amount), 0);
   const totalPending = payments.filter(p => ['pending', 'in_process'].includes(p.status)).reduce((s, p) => s + Number(p.amount), 0);
-  const walletTopups = walletTxs.filter(t => t.type === 'credit' && t.status === 'completed').reduce((s, t) => s + Number(t.amount), 0);
+  // Corridas pagas via carteira (wallet_transactions.type='ride_payment')
+  const walletRidePayments = walletTxs.filter(t => t.type === 'ride_payment' && t.status === 'completed');
+  const walletRideRevenue = walletRidePayments.reduce((s, t) => s + Number(t.amount), 0);
+  // Receita total = MP + carteira (bruto recebido em corridas, independente do meio)
+  const totalRevenue = mpRevenue + walletRideRevenue;
+  // Recargas de carteira (passageiro pos saldo via PIX)
+  const walletTopups = walletTxs.filter(t => t.type === 'topup' && t.status === 'completed').reduce((s, t) => s + Number(t.amount), 0);
   const todayRevenue = daily.find(d => d.date === new Date().toISOString().slice(0, 10))?.total ?? 0;
+  const paidRidesCount = paidRides.length;
 
   // Revenue split totals — fair-discount model
   // Pilot always gets 45% of GROSS (pre-discount); voucher discount is fully borne by
@@ -726,10 +733,34 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         <>
           {/* Main metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={DollarSign} label="Receita total" value={fmt(totalRevenue)} color="green" />
-            <StatCard icon={TrendingUp} label="Receita hoje" value={fmt(todayRevenue)} color="blue" />
-            <StatCard icon={CreditCard} label="Pagamentos pendentes" value={fmt(totalPending)} color="orange" />
-            <StatCard icon={Wallet} label="Recargas de carteira" value={fmt(walletTopups)} color="purple" />
+            <StatCard
+              icon={DollarSign}
+              label="Receita total bruta"
+              value={fmt(totalRevenue)}
+              sub={`${paidRidesCount} ${paidRidesCount === 1 ? 'corrida paga' : 'corridas pagas'} · MP ${fmt(mpRevenue)} + carteira ${fmt(walletRideRevenue)}`}
+              color="green"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Receita hoje (MP)"
+              value={fmt(todayRevenue)}
+              sub="Soma das tabela payments concluídos"
+              color="blue"
+            />
+            <StatCard
+              icon={CreditCard}
+              label="Pagamentos pendentes"
+              value={fmt(totalPending)}
+              sub="Mercado Pago"
+              color="orange"
+            />
+            <StatCard
+              icon={Wallet}
+              label="Recargas de carteira"
+              value={fmt(walletTopups)}
+              sub="PIX para saldo (não inclui voucher)"
+              color="purple"
+            />
           </div>
 
           {/* Ad sales — 100% platform revenue */}
