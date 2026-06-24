@@ -331,8 +331,9 @@ const AdminAds = () => {
               </div>
             </section>
 
-            {/* 1. Cliente — somente para anuncios */}
+            {/* 1. Cliente + 2. Pacote — somente para anuncios */}
             {form.content_type === 'ad' && (
+            <>
             <section>
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">1</span>
@@ -414,6 +415,7 @@ const AdminAds = () => {
                 </div>
               )}
             </section>
+            </>
             )}
 
             {/* 3. Criativo */}
