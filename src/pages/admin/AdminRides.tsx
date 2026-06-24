@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Search, ChevronLeft, ChevronRight, MapPin, Clock, User, Ship, TrendingUp, Users, Calendar } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, MapPin, Clock, User, Ship, TrendingUp, Users, Calendar, Mail, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const PAGE_SIZE = 30;
 
@@ -48,6 +49,36 @@ const AdminRides = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResendEmails = async (rideId: string) => {
+    setResendingId(rideId);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-ride-emails', {
+        body: { ride_id: rideId, force: true },
+      });
+      if (error) throw error;
+      const result = data as { success?: boolean; results?: { passenger?: { id?: string; error?: string }; pilot?: { id?: string; error?: string } } };
+      const passOk = result?.results?.passenger?.id;
+      const pilotOk = result?.results?.pilot?.id;
+      const passErr = result?.results?.passenger?.error;
+      const pilotErr = result?.results?.pilot?.error;
+      if (passOk && pilotOk) {
+        toast.success('Emails reenviados (passageiro + piloto)');
+      } else if (passOk) {
+        toast.success(`Email do passageiro enviado. ${pilotErr ? `Piloto: ${pilotErr}` : 'Piloto sem email.'}`);
+      } else if (pilotOk) {
+        toast.success(`Email do piloto enviado. ${passErr ? `Passageiro: ${passErr}` : 'Passageiro sem email.'}`);
+      } else {
+        toast.error(`Falha ao enviar: ${passErr || pilotErr || 'verifique os emails dos perfis'}`);
+      }
+    } catch (err) {
+      console.error('Resend emails error:', err);
+      toast.error('Erro ao reenviar emails');
+    } finally {
+      setResendingId(null);
+    }
+  };
   const [metrics, setMetrics] = useState<{ day: PeriodMetrics; week: PeriodMetrics; month: PeriodMetrics }>({
     day:   { rides: 0, uniquePassengers: 0 },
     week:  { rides: 0, uniquePassengers: 0 },
@@ -241,6 +272,7 @@ const AdminRides = () => {
                 <th className="text-left px-4 py-3 text-muted-foreground font-medium hidden lg:table-cell">
                   <Clock className="w-3.5 h-3.5 inline mr-1" />Data
                 </th>
+                <th className="text-right px-4 py-3 text-muted-foreground font-medium">Email</th>
               </tr>
             </thead>
             <tbody>
@@ -270,11 +302,32 @@ const AdminRides = () => {
                   <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
                     {new Date(r.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    {r.status === 'completed' ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleResendEmails(r.id)}
+                        disabled={resendingId === r.id}
+                        className="gap-1 h-8 px-2"
+                        title="Reenviar emails (passageiro + piloto)"
+                      >
+                        {resendingId === r.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Mail className="w-3.5 h-3.5" />
+                        )}
+                        Reenviar
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     Nenhuma corrida encontrada
                   </td>
                 </tr>

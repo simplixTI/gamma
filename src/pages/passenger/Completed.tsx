@@ -183,6 +183,17 @@ const Completed = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPaid, user?.id]);
 
+  // Dispara emails de recibo (passageiro + piloto) via Resend.
+  // Idempotente server-side via ride_emails_sent — re-render nao reenvia.
+  // Fire-and-forget: falha de email nao bloqueia UX.
+  const emailDispatchedRef = useRef(false);
+  useEffect(() => {
+    if (!isPaid || !rideId || emailDispatchedRef.current) return;
+    emailDispatchedRef.current = true;
+    supabase.functions.invoke('send-ride-emails', { body: { ride_id: rideId } })
+      .catch((err) => console.warn('[send-ride-emails] failed:', err));
+  }, [isPaid, rideId]);
+
   // Trigger confetti when 5 stars are given
   useEffect(() => {
     if (rating === 5 && !confettiTriggered) {
