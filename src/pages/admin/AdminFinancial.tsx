@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket, Download, FileText } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket, Download, FileText, Ship } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Split constants — kept in sync with platform_config table
@@ -726,9 +726,11 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   // pra que o saldo MP confira com o sistema.
   const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
   const partnerPlatformSum = PARTNER_BOAT_PCT + (1 - PARTNER_BOAT_PCT); // 1.0
-  let totalPilot = 0;
-  let totalOwners = 0;
-  let totalSimplix = 0;
+  let totalPilotGamma = 0;       // 45% pra pilotos Gamma
+  let totalPartnerBoat = 0;      // 60% pra barcos parceiros
+  let totalOwners = 0;           // 45% pros donos Gamma (apenas rides Gamma)
+  let totalSimplixGamma = 0;     // 10% Simplix de rides Gamma
+  let totalSimplixPartner = 0;   // 40% Simplix de rides parceiros
   let totalDiscount = 0;
   let totalVoucherOwner = 0;
   let totalVoucherPlatform = 0;
@@ -753,38 +755,37 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
       simplixShare = gross - pilotShare;
       // MP fee toda em cima de simplix (so existe ele do lado da plataforma)
       simplixShare -= mpFee;
-      // Voucher sponsor=owner nesse modelo nao faz sentido — fallback simplix
       if (voucherDisc > 0) simplixShare -= voucherDisc;
       if (referralDisc > 0) simplixShare -= referralDisc;
+
+      totalPartnerBoat += pilotShare;
+      totalSimplixPartner += simplixShare;
     } else {
       // Piloto Gamma: 45/45/10
       pilotShare = gross * PILOT_PCT;
       ownerShare = gross * OWNERS_PCT;
       simplixShare = gross * SIMPLIX_PCT;
 
-      // Voucher: sponsor paga integral
       if (voucherDisc > 0 && r.voucher_sponsor === 'owner') {
         ownerShare -= voucherDisc;
       } else if (voucherDisc > 0 && r.voucher_sponsor === 'platform') {
         simplixShare -= voucherDisc;
       }
 
-      // Referral: rateio proporcional 45:10 entre owner e simplix
       if (referralDisc > 0) {
         ownerShare -= referralDisc * (OWNERS_PCT / ownerSimplixSum);
         simplixShare -= referralDisc * (SIMPLIX_PCT / ownerSimplixSum);
       }
 
-      // Taxa MP: rateio proporcional 45:10 entre owner e simplix
       if (mpFee > 0) {
         ownerShare -= mpFee * (OWNERS_PCT / ownerSimplixSum);
         simplixShare -= mpFee * (SIMPLIX_PCT / ownerSimplixSum);
       }
-    }
 
-    totalPilot += pilotShare;
-    totalOwners += ownerShare;
-    totalSimplix += simplixShare;
+      totalPilotGamma += pilotShare;
+      totalOwners += ownerShare;
+      totalSimplixGamma += simplixShare;
+    }
     totalDiscount += totalDisc;
     totalMpFee += mpFee;
     if (r.voucher_sponsor === 'owner') totalVoucherOwner += voucherDisc;
@@ -980,19 +981,22 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Pilotos Gamma 45% */}
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
                     <Anchor className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">PILOTOS (45%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalPilot)}</p>
+                    <p className="text-xs text-muted-foreground font-medium">PILOTOS GAMMA (45%)</p>
+                    <p className="text-xl font-bold text-foreground">{fmt(totalPilotGamma)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">45% do valor bruto (antes do desconto)</p>
+                <p className="text-xs text-muted-foreground">Funcionários conduzindo barcos da Gamma</p>
               </div>
+
+              {/* Donos do Barco 45% (Gamma) */}
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-600 flex items-center justify-center">
@@ -1003,19 +1007,44 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                     <p className="text-xl font-bold text-foreground">{fmt(totalOwners)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Após descontos absorvidos proporcionalmente</p>
+                <p className="text-xs text-muted-foreground">Após descontos e taxa MP rateados</p>
               </div>
+
+              {/* Barcos Parceiros 60% */}
+              <div className="bg-card rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center">
+                    <Ship className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-emerald-700/80 font-medium">BARCOS PARCEIROS (60%)</p>
+                    <p className="text-xl font-bold text-foreground">{fmt(totalPartnerBoat)}</p>
+                  </div>
+                </div>
+                <p className="text-xs text-emerald-700/80">Donos de barcos próprios</p>
+              </div>
+
+              {/* Simplix com breakdown */}
               <div className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">SIMPLIX (10%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalSimplix)}</p>
+                    <p className="text-xs text-muted-foreground font-medium">SIMPLIX</p>
+                    <p className="text-xl font-bold text-foreground">{fmt(totalSimplixGamma + totalSimplixPartner)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Após descontos absorvidos proporcionalmente</p>
+                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>↳ 10% rides Gamma</span>
+                    <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixGamma)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>↳ 40% rides Parceiros</span>
+                    <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixPartner)}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
