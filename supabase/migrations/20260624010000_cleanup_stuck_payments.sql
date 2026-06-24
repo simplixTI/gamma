@@ -15,9 +15,10 @@ DECLARE
   v_ride_count INT;
 BEGIN
   -- 1. Pagamentos parados ha mais de 30 min viram 'failed'
+  -- (tabela payments nao tem updated_at, so muda status)
   WITH updated AS (
     UPDATE public.payments
-    SET status = 'failed', updated_at = NOW()
+    SET status = 'failed'
     WHERE status IN ('processing', 'pending', 'in_process')
       AND created_at < NOW() - INTERVAL '30 minutes'
     RETURNING id
