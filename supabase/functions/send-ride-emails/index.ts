@@ -37,7 +37,6 @@ interface PassengerEmailParams {
   origin: string;
   destination: string;
   date: string;
-  distanceKm: number | null;
   durationMin: number | null;
   price: number;
   paymentMethod: string;
@@ -83,7 +82,6 @@ const buildPassengerHtml = (p: PassengerEmailParams): string => `<!DOCTYPE html>
 
         <table cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:24px;">
           <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Data e hora</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.date}</td></tr>
-          ${p.distanceKm != null ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Distância</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.distanceKm.toFixed(1)} km</td></tr>` : ''}
           ${p.durationMin != null ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Tempo estimado</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.durationMin} min</td></tr>` : ''}
           <tr><td style="padding:8px 0;font-size:13px;color:#6e6e73;">Forma de pagamento</td><td style="padding:8px 0;font-size:13px;text-align:right;font-weight:600;">${p.paymentMethod}</td></tr>
         </table>
@@ -111,7 +109,6 @@ interface PilotEmailParams {
   origin: string;
   destination: string;
   date: string;
-  distanceKm: number | null;
   durationMin: number | null;
   gross: number;
   sharePercent: number; // 0.45 ou 0.60
@@ -158,7 +155,6 @@ const buildPilotHtml = (p: PilotEmailParams): string => {
 
         <table cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:24px;">
           <tr><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Data e hora</td><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.date}</td></tr>
-          ${p.distanceKm != null ? `<tr><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Distância</td><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.distanceKm.toFixed(1)} km</td></tr>` : ''}
           ${p.durationMin != null ? `<tr><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Tempo estimado</td><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.durationMin} min</td></tr>` : ''}
           <tr><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;color:#6e6e73;">Modelo</td><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:600;">${p.isPartnerBoat ? 'Barco Parceiro' : 'Piloto Gamma'}</td></tr>
         </table>
@@ -269,7 +265,7 @@ Deno.serve(async (req: Request) => {
     // Carrega corrida + checa permissao
     const { data: ride, error: rideError } = await adminClient
       .from('rides')
-      .select('id, origin_name, destination_name, price, distance_km, estimated_time, completed_at, payment_method, payment_status, passenger_user_id, pilot_user_id, passenger_name, pilot_name')
+      .select('id, origin_name, destination_name, price, estimated_time, completed_at, payment_method, payment_status, passenger_user_id, pilot_user_id, passenger_name, pilot_name')
       .eq('id', ride_id)
       .single();
     if (rideError || !ride) {
@@ -333,7 +329,6 @@ Deno.serve(async (req: Request) => {
     const dateLabel = fmtDateTime(ride.completed_at as string | null);
     const origin = (ride.origin_name as string | undefined) ?? '—';
     const destination = (ride.destination_name as string | undefined) ?? '—';
-    const distanceKm = ride.distance_km != null ? Number(ride.distance_km) : null;
     const durationMin = ride.estimated_time != null ? Number(ride.estimated_time) : null;
     const price = Number(ride.price);
     const paymentMethod = paymentMethodLabel(ride.payment_method as string | null | undefined);
@@ -345,7 +340,7 @@ Deno.serve(async (req: Request) => {
       const html = buildPassengerHtml({
         passengerName, pilotName,
         origin, destination, date: dateLabel,
-        distanceKm, durationMin,
+        durationMin,
         price, paymentMethod,
       });
       results.passenger = await sendViaResend(RESEND_API_KEY, MAIL_FROM, passenger.email, 'Sua viagem com a Gamma', html);
@@ -361,7 +356,7 @@ Deno.serve(async (req: Request) => {
       const html = buildPilotHtml({
         pilotName, passengerName, rideShortId,
         origin, destination, date: dateLabel,
-        distanceKm, durationMin,
+        durationMin,
         gross: grossAmount, sharePercent, net,
         isPartnerBoat,
         pixKey: pilot.pix_key ?? null,
