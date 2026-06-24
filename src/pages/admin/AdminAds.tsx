@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+type ContentType = 'ad' | 'curiosity';
+
 interface Ad {
   id: string;
   title: string;
@@ -24,6 +26,7 @@ interface Ad {
   advertiser_name: string | null;
   advertiser_contact: string | null;
   sold_at: string | null;
+  content_type: ContentType;
 }
 
 const POSITIONS: Record<string, string> = {
@@ -48,6 +51,7 @@ const emptyForm = {
   price: '',
   advertiserName: '',
   advertiserContact: '',
+  content_type: 'ad' as ContentType,
 };
 
 const parsePrice = (s: string): number | null => {
@@ -119,16 +123,19 @@ const AdminAds = () => {
       price: ad.price != null ? String(ad.price).replace('.', ',') : '',
       advertiserName: ad.advertiser_name ?? '',
       advertiserContact: ad.advertiser_contact ?? '',
+      content_type: ad.content_type ?? 'ad',
     });
     setEditId(ad.id);
     setShowForm(true);
   };
 
   const save = async () => {
-    if (!form.title.trim()) { toast.error('Título do anúncio obrigatório'); return; }
+    if (!form.title.trim()) { toast.error('Título obrigatório'); return; }
 
+    const isCuriosity = form.content_type === 'curiosity';
     const priceValue = parsePrice(form.price);
-    const isPaid = form.durationDays !== null;
+    // Curiosidade nunca tem precificacao
+    const isPaid = !isCuriosity && form.durationDays !== null;
 
     if (isPaid && priceValue === null) {
       toast.error('Informe o preço do pacote');
@@ -137,7 +144,7 @@ const AdminAds = () => {
 
     setSaving(true);
     try {
-      // For paid ads: starts NOW, ends NOW + duration. For internal/courtesy: no schedule.
+      // For paid ads: starts NOW, ends NOW + duration. For internal/courtesy/curiosity: no schedule.
       const now = new Date();
       const endsAt = isPaid && form.durationDays
         ? new Date(now.getTime() + form.durationDays * 24 * 60 * 60 * 1000)
@@ -147,14 +154,15 @@ const AdminAds = () => {
         title: form.title.trim(),
         description: form.description.trim() || null,
         image_url: form.image_url.trim() || null,
-        link_url: form.link_url.trim() || null,
+        link_url: isCuriosity ? null : (form.link_url.trim() || null),
         position: form.position,
+        content_type: form.content_type,
         starts_at: isPaid ? now.toISOString() : null,
         ends_at: endsAt ? endsAt.toISOString() : null,
         price: isPaid ? priceValue : null,
-        duration_days: form.durationDays,
-        advertiser_name: form.advertiserName.trim() || null,
-        advertiser_contact: form.advertiserContact.trim() || null,
+        duration_days: isCuriosity ? null : form.durationDays,
+        advertiser_name: isCuriosity ? null : (form.advertiserName.trim() || null),
+        advertiser_contact: isCuriosity ? null : (form.advertiserContact.trim() || null),
         updated_at: now.toISOString(),
       };
 
@@ -276,12 +284,55 @@ const AdminAds = () => {
       {showForm && (
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           <div className="bg-gradient-to-r from-primary/10 to-transparent px-5 py-4 border-b border-border">
-            <h2 className="font-semibold text-foreground">{editId ? 'Editar anúncio' : 'Nova venda de espaço'}</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Cliente → Pacote → Criativo</p>
+            <h2 className="font-semibold text-foreground">
+              {editId
+                ? (form.content_type === 'curiosity' ? 'Editar curiosidade' : 'Editar anúncio')
+                : (form.content_type === 'curiosity' ? 'Nova curiosidade da Ilha' : 'Nova venda de espaço')}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {form.content_type === 'curiosity' ? 'Conteúdo educativo / turístico' : 'Cliente → Pacote → Criativo'}
+            </p>
           </div>
 
           <div className="p-5 space-y-6">
-            {/* 1. Cliente */}
+            {/* Tipo de conteudo: Anuncio vs Curiosidade */}
+            <section>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, content_type: 'ad' }))}
+                  className={`rounded-xl border-2 p-4 text-left transition-all active:scale-[0.98] ${
+                    form.content_type === 'ad'
+                      ? 'border-blue-500 bg-blue-500/10 ring-2 ring-blue-500 ring-offset-2 ring-offset-card'
+                      : 'border-border bg-background hover:border-foreground/20'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <DollarSign className={`w-5 h-5 ${form.content_type === 'ad' ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                    <p className={`font-bold ${form.content_type === 'ad' ? 'text-blue-600' : 'text-foreground'}`}>Anúncio comercial</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Venda de espaço com pacote pago, anunciante, prazo.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, content_type: 'curiosity' }))}
+                  className={`rounded-xl border-2 p-4 text-left transition-all active:scale-[0.98] ${
+                    form.content_type === 'curiosity'
+                      ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500 ring-offset-2 ring-offset-card'
+                      : 'border-border bg-background hover:border-foreground/20'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className={`w-5 h-5 ${form.content_type === 'curiosity' ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                    <p className={`font-bold ${form.content_type === 'curiosity' ? 'text-emerald-600' : 'text-foreground'}`}>Curiosidade da Ilha</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Fato pouco conhecido sobre a Gigoia pra turistas. Sem anunciante.</p>
+                </button>
+              </div>
+            </section>
+
+            {/* 1. Cliente — somente para anuncios */}
+            {form.content_type === 'ad' && (
             <section>
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">1</span>
@@ -363,6 +414,7 @@ const AdminAds = () => {
                 </div>
               )}
             </section>
+            )}
 
             {/* 3. Criativo */}
             <section>
@@ -477,6 +529,11 @@ const AdminAds = () => {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
                       <span className="font-medium text-foreground">{ad.title}</span>
+                      {ad.content_type === 'curiosity' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 uppercase tracking-wide">
+                          Curiosidade
+                        </span>
+                      )}
                       {pkg && (
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pkg.bg} ${pkg.text} uppercase tracking-wide`}>
                           {pkg.label}

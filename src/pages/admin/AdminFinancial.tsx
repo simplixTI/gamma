@@ -48,6 +48,7 @@ interface DailyRevenue {
 interface PilotDayPayout {
   key: string; // pilot_profile_id + ':' + date
   pilot_profile_id: string;
+  pilot_user_id: string;
   pilot_name: string;
   pilot_type: PilotType;
   share_percent: number; // 0.45 ou 0.60
@@ -60,8 +61,25 @@ interface PilotDayPayout {
   earning_ids: string[];
 }
 
+type PayoutMethod = 'pix' | 'cash' | 'transfer' | 'other';
+
+interface PayoutFormState {
+  paid_date: string; // YYYY-MM-DD
+  method: PayoutMethod;
+  reference: string;
+  notes: string;
+}
+
+const PAYOUT_METHOD_LABEL: Record<PayoutMethod, string> = {
+  pix: 'PIX',
+  cash: 'Dinheiro',
+  transfer: 'Transferência bancária',
+  other: 'Outro',
+};
+
 interface PayoutHistoryRow {
-  key: string; // pilot_profile_id + ':' + paid_date
+  key: string; // pilot_payouts.id
+  payout_id: string;
   pilot_profile_id: string;
   pilot_name: string;
   pilot_type: PilotType;
@@ -72,6 +90,9 @@ interface PayoutHistoryRow {
   rides_count: number;
   gross: number;
   pilot_share: number;
+  method: PayoutMethod | null;
+  reference: string | null;
+  notes: string | null;
 }
 
 interface AdSale {
@@ -154,7 +175,7 @@ const AdminFinancial = () => {
     setPayoutsLoading(true);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('id, pilot_profile_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
+      .select('id, pilot_profile_id, pilot_user_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -162,6 +183,7 @@ const AdminFinancial = () => {
       const grouped: Record<string, PilotDayPayout> = {};
       for (const row of data) {
         const id = row.pilot_profile_id as string;
+        const userId = row.pilot_user_id as string;
         const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
         const name = profile?.full_name ?? 'Piloto desconhecido';
         const ptype: PilotType = profile?.pilot_type ?? 'pilot';
@@ -173,6 +195,7 @@ const AdminFinancial = () => {
           grouped[key] = {
             key,
             pilot_profile_id: id,
+            pilot_user_id: userId,
             pilot_name: name,
             pilot_type: ptype,
             share_percent: sharePct,
@@ -200,58 +223,125 @@ const AdminFinancial = () => {
     setHistoryLoading(true);
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
-    const { data } = await supabase
-      .from('pilot_earnings')
-      .select('pilot_profile_id, gross_amount, paid_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
-      .eq('status', 'paid')
+
+    // 1. Busca todos os payouts dos ultimos 30 dias com pilot info
+    const { data: payouts } = await supabase
+      .from('pilot_payouts')
+      .select('id, pilot_profile_id, amount, paid_at, method, reference, notes, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
       .gte('paid_at', cutoff.toISOString())
       .order('paid_at', { ascending: false });
 
-    if (data) {
-      const grouped: Record<string, PayoutHistoryRow> = {};
-      for (const row of data) {
-        if (!row.paid_at) continue;
-        const id = row.pilot_profile_id as string;
-        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
-        const name = profile?.full_name ?? 'Piloto desconhecido';
-        const ptype: PilotType = profile?.pilot_type ?? 'pilot';
-        const sharePct = sharePercentFor(ptype);
-        const paid_date = String(row.paid_at).slice(0, 10);
-        const key = `${id}:${paid_date}`;
-        const gross = Number(row.gross_amount);
-        if (!grouped[key]) {
-          grouped[key] = {
-            key, pilot_profile_id: id, pilot_name: name,
-            pilot_type: ptype,
-            share_percent: sharePct,
-            pix_key: profile?.pix_key ?? null,
-            pix_key_type: profile?.pix_key_type ?? null,
-            paid_date, rides_count: 0, gross: 0, pilot_share: 0,
-          };
-        }
-        grouped[key].rides_count += 1;
-        grouped[key].gross += gross;
-        grouped[key].pilot_share += gross * sharePct;
-      }
-      setPayoutHistory(Object.values(grouped).sort((a, b) => b.paid_date.localeCompare(a.paid_date)));
+    if (!payouts) {
+      setHistoryLoading(false);
+      return;
     }
+
+    // 2. Conta corridas (earnings) por payout
+    const payoutIds = payouts.map(p => p.id as string);
+    let earningsByPayout: Record<string, { rides_count: number; gross: number }> = {};
+    if (payoutIds.length > 0) {
+      const { data: earnings } = await supabase
+        .from('pilot_earnings')
+        .select('payout_id, gross_amount')
+        .in('payout_id', payoutIds);
+      if (earnings) {
+        for (const e of earnings) {
+          const pid = e.payout_id as string;
+          if (!earningsByPayout[pid]) earningsByPayout[pid] = { rides_count: 0, gross: 0 };
+          earningsByPayout[pid].rides_count += 1;
+          earningsByPayout[pid].gross += Number(e.gross_amount);
+        }
+      }
+    }
+
+    const rows: PayoutHistoryRow[] = payouts.map(p => {
+      const profile = p.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
+      const ptype: PilotType = profile?.pilot_type ?? 'pilot';
+      const aggr = earningsByPayout[p.id as string] ?? { rides_count: 0, gross: 0 };
+      return {
+        key: p.id as string,
+        payout_id: p.id as string,
+        pilot_profile_id: p.pilot_profile_id as string,
+        pilot_name: profile?.full_name ?? 'Piloto desconhecido',
+        pilot_type: ptype,
+        share_percent: sharePercentFor(ptype),
+        pix_key: profile?.pix_key ?? null,
+        pix_key_type: profile?.pix_key_type ?? null,
+        paid_date: String(p.paid_at).slice(0, 10),
+        rides_count: aggr.rides_count,
+        gross: aggr.gross,
+        pilot_share: Number(p.amount),
+        method: (p.method as PayoutMethod) ?? null,
+        reference: (p.reference as string) ?? null,
+        notes: (p.notes as string) ?? null,
+      };
+    });
+
+    setPayoutHistory(rows);
     setHistoryLoading(false);
   }, []);
 
-  const handleMarkAsPaid = async (group: PilotDayPayout) => {
+  const [payoutModalGroup, setPayoutModalGroup] = useState<PilotDayPayout | null>(null);
+  const [payoutForm, setPayoutForm] = useState<PayoutFormState>({
+    paid_date: new Date().toISOString().slice(0, 10),
+    method: 'pix',
+    reference: '',
+    notes: '',
+  });
+
+  const openPayoutModal = (group: PilotDayPayout) => {
+    setPayoutForm({
+      paid_date: new Date().toISOString().slice(0, 10),
+      method: 'pix',
+      reference: '',
+      notes: '',
+    });
+    setPayoutModalGroup(group);
+  };
+
+  const closePayoutModal = () => {
+    setPayoutModalGroup(null);
+  };
+
+  const handleSubmitPayout = async () => {
+    if (!payoutModalGroup) return;
+    const group = payoutModalGroup;
     setMarkingPaid(group.key);
-    const { error } = await supabase
-      .from('pilot_earnings')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .in('id', group.earning_ids);
-    if (error) {
-      console.error('Error marking as paid:', error);
-    } else {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // 1. INSERT payout
+      const { data: payout, error: payoutError } = await supabase
+        .from('pilot_payouts')
+        .insert({
+          pilot_profile_id: group.pilot_profile_id,
+          pilot_user_id: group.pilot_user_id,
+          amount: Number(group.pilot_share.toFixed(2)),
+          paid_at: new Date(payoutForm.paid_date + 'T12:00:00').toISOString(),
+          method: payoutForm.method,
+          reference: payoutForm.reference.trim() || null,
+          notes: payoutForm.notes.trim() || null,
+          created_by: user?.id ?? null,
+        })
+        .select('id, paid_at')
+        .single();
+      if (payoutError) throw payoutError;
+
+      // 2. UPDATE earnings — vincula ao payout + marca pago
+      const { error: updateError } = await supabase
+        .from('pilot_earnings')
+        .update({ status: 'paid', paid_at: payout.paid_at, payout_id: payout.id })
+        .in('id', group.earning_ids);
+      if (updateError) throw updateError;
+
       setPilotPayouts((prev) => prev.filter((p) => p.key !== group.key));
-      // Recarrega o histórico pra mostrar o repasse recém-marcado
+      closePayoutModal();
       loadPayoutHistory();
+    } catch (err) {
+      console.error('Error registering payout:', err);
+      alert('Erro ao registrar pagamento. Tente novamente.');
+    } finally {
+      setMarkingPaid(null);
     }
-    setMarkingPaid(null);
   };
 
   const downloadCSV = (filename: string, rows: Record<string, string | number>[]) => {
@@ -328,6 +418,9 @@ ${html}
     gross: number;
     pilotShare: number;
     status: string;
+    method?: PayoutMethod | null;
+    reference?: string | null;
+    notes?: string | null;
   }) => {
     const fmtBR = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`;
     const dateLabel = new Date(params.refDate + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -349,6 +442,9 @@ ${html}
 <div class="row"><span class="label">Total bruto</span><span class="value">${fmtBR(params.gross)}</span></div>
 <div class="row"><span class="label">${recipientLabel}</span><span class="value">${pctLabel}</span></div>
 <div class="row"><span class="label">Chave PIX</span><span class="value">${pixLine}</span></div>
+${params.method ? `<div class="row"><span class="label">Método</span><span class="value">${({pix:'PIX',cash:'Dinheiro',transfer:'Transferência',other:'Outro'} as Record<string,string>)[params.method]}</span></div>` : ''}
+${params.reference ? `<div class="row"><span class="label">Referência</span><span class="value" style="font-family:monospace;font-size:11px">${params.reference}</span></div>` : ''}
+${params.notes ? `<div class="row"><span class="label">Observações</span><span class="value" style="text-align:right;max-width:60%">${params.notes}</span></div>` : ''}
 <div class="row"><span class="label">Status</span><span class="value">${params.status}</span></div>
 <div class="total">
   <span class="label">Valor a receber</span>
@@ -387,6 +483,9 @@ ${html}
       Corridas: h.rides_count,
       'Bruto (R$)': h.gross.toFixed(2).replace('.', ','),
       'Repassado (R$)': h.pilot_share.toFixed(2).replace('.', ','),
+      Método: h.method ? PAYOUT_METHOD_LABEL[h.method] : '',
+      Referência: h.reference ?? '',
+      Observações: h.notes ?? '',
       PIX: h.pix_key ?? '',
       'Tipo PIX': h.pix_key_type ?? '',
     }));
@@ -423,6 +522,9 @@ ${html}
       gross: h.gross,
       pilotShare: h.pilot_share,
       status: 'Repassado',
+      method: h.method,
+      reference: h.reference,
+      notes: h.notes,
     });
     openReceiptWindow(`Recibo ${h.pilot_name} — ${h.paid_date}`, html);
   };
@@ -867,7 +969,7 @@ ${html}
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleMarkAsPaid(p)}
+                              onClick={() => openPayoutModal(p)}
                               disabled={markingPaid === p.key}
                               className="gap-1.5"
                             >
@@ -876,7 +978,7 @@ ${html}
                               ) : (
                                 <CheckCircle className="w-3.5 h-3.5" />
                               )}
-                              Marcar Pago
+                              Registrar Pagamento
                             </Button>
                           </div>
                         </td>
@@ -921,6 +1023,7 @@ ${html}
                     <tr className="border-b border-border bg-muted/50">
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data do repasse</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Método</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassado</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Recibo</th>
@@ -931,6 +1034,18 @@ ${html}
                       <tr key={h.key} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-4 py-3 text-foreground whitespace-nowrap">{fmtDate(h.paid_date)}</td>
                         <td className="px-4 py-3 text-foreground">{h.pilot_name}</td>
+                        <td className="px-4 py-3 text-xs">
+                          {h.method ? (
+                            <span className="font-medium text-foreground">{PAYOUT_METHOD_LABEL[h.method]}</span>
+                          ) : (
+                            <span className="text-muted-foreground italic">—</span>
+                          )}
+                          {h.reference && (
+                            <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[160px]" title={h.reference}>
+                              {h.reference}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{h.rides_count}</td>
                         <td className="px-4 py-3 text-right font-semibold text-blue-600 tabular-nums">{fmt(h.pilot_share)}</td>
                         <td className="px-4 py-3 text-right">
@@ -1030,6 +1145,102 @@ ${html}
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal: Registrar Pagamento */}
+      {payoutModalGroup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closePayoutModal}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-foreground">Registrar Pagamento</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                {payoutModalGroup.pilot_name} — {fmtDate(payoutModalGroup.date)}
+              </p>
+            </div>
+
+            <div className="px-6 py-4 space-y-4">
+              {/* Valor (read-only) */}
+              <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Valor a pagar</p>
+                  <p className="text-2xl font-bold text-blue-600 tabular-nums">{fmt(payoutModalGroup.pilot_share)}</p>
+                </div>
+                <div className="text-right text-xs text-muted-foreground">
+                  <p>{payoutModalGroup.rides_count} corrida{payoutModalGroup.rides_count !== 1 ? 's' : ''}</p>
+                  <p>{(payoutModalGroup.share_percent * 100).toFixed(0)}% de {fmt(payoutModalGroup.gross)}</p>
+                </div>
+              </div>
+
+              {/* Data do pagamento */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Data do pagamento</label>
+                <input
+                  type="date"
+                  value={payoutForm.paid_date}
+                  onChange={(e) => setPayoutForm(f => ({ ...f, paid_date: e.target.value }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Método */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Método</label>
+                <select
+                  value={payoutForm.method}
+                  onChange={(e) => setPayoutForm(f => ({ ...f, method: e.target.value as PayoutMethod }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="pix">PIX</option>
+                  <option value="cash">Dinheiro</option>
+                  <option value="transfer">Transferência bancária</option>
+                  <option value="other">Outro</option>
+                </select>
+              </div>
+
+              {/* Referência (TX id) */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">
+                  Referência <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={payoutForm.reference}
+                  onChange={(e) => setPayoutForm(f => ({ ...f, reference: e.target.value }))}
+                  placeholder="ID da transação PIX, número do recibo..."
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Observações */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">
+                  Observações <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <textarea
+                  value={payoutForm.notes}
+                  onChange={(e) => setPayoutForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Anotação interna..."
+                  rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+              <Button variant="outline" onClick={closePayoutModal} disabled={markingPaid === payoutModalGroup.key}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSubmitPayout} disabled={markingPaid === payoutModalGroup.key}>
+                {markingPaid === payoutModalGroup.key ? (
+                  <span className="w-3.5 h-3.5 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <CheckCircle className="w-3.5 h-3.5 mr-2" />
+                )}
+                Confirmar Pagamento
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
