@@ -178,10 +178,20 @@ async function handleRidePayment(
     return ok({ error: 'amount_mismatch' });
   }
 
+  // Extrai taxa MP do payload (soma fee_details onde collector eh o fee_payer).
+  // Garante contabilidade exata entre saldo Mercado Pago e o sistema.
+  const feeDetails = (mpPayment.fee_details ?? []) as Array<{ amount?: number; fee_payer?: string }>;
+  const mpFee = Number(
+    feeDetails
+      .filter((f) => !f.fee_payer || f.fee_payer === 'collector')
+      .reduce((sum, f) => sum + Number(f.amount ?? 0), 0)
+      .toFixed(2)
+  );
+
   // Update payment to completed
   const { error: payUpdateErr } = await supabase
     .from('payments')
-    .update({ status: 'completed', paid_at: new Date().toISOString() })
+    .update({ status: 'completed', paid_at: new Date().toISOString(), mp_fee: mpFee })
     .eq('mp_payment_id', mpPaymentId);
 
   if (payUpdateErr) {

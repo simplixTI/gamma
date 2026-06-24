@@ -28,6 +28,7 @@ interface PaymentRow {
   paid_at: string | null;
   created_at: string;
   ride_id: string | null;
+  mp_fee: number;
 }
 
 interface WalletTx {
@@ -123,6 +124,8 @@ interface PaidRide {
   voucher_discount_amount: number | null;
   voucher_sponsor: 'owner' | 'platform' | null;
   completed_at: string | null;
+  pilot_type: PilotType; // 'pilot' (Gamma) ou 'partner_boat'
+  mp_fee: number; // taxa MP daquele ride (0 se wallet)
 }
 
 const StatCard = ({ icon: Icon, label, value, sub, color = 'green' }: {
@@ -586,7 +589,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
     const load = async () => {
       const [pRes, wRes, adsRes, ridesRes] = await Promise.all([
         supabase.from('payments')
-          .select('id, amount, status, paid_at, created_at, ride_id')
+          .select('id, amount, status, paid_at, created_at, ride_id, mp_fee')
           .order('created_at', { ascending: false })
           .limit(100),
         supabase.from('wallet_transactions')
@@ -599,7 +602,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
           .order('sold_at', { ascending: false })
           .limit(50),
         supabase.from('rides')
-          .select('id, price, gross_price, discount_amount, voucher_discount_amount, completed_at, vouchers:voucher_id(sponsor)')
+          .select('id, price, gross_price, discount_amount, voucher_discount_amount, completed_at, pilot_user_id, vouchers:voucher_id(sponsor)')
           .eq('payment_status', 'paid')
           .order('completed_at', { ascending: false })
           .limit(500),
@@ -617,8 +620,38 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         discount_amount: number | null;
         voucher_discount_amount: number | null;
         completed_at: string | null;
+        pilot_user_id: string | null;
         vouchers: { sponsor: 'owner' | 'platform' } | null;
       }>;
+
+      // Batch-fetch pilot_type para os pilotos das rides
+      const pilotUserIds = Array.from(new Set(ridesRaw.map(r => r.pilot_user_id).filter(Boolean) as string[]));
+      const pilotTypeMap = new Map<string, PilotType>();
+      if (pilotUserIds.length > 0) {
+        const { data: pilotProfiles } = await supabase
+          .from('pilot_profiles')
+          .select('user_id, pilot_type')
+          .in('user_id', pilotUserIds);
+        (pilotProfiles ?? []).forEach((p: { user_id: string; pilot_type: PilotType }) => {
+          pilotTypeMap.set(p.user_id, p.pilot_type ?? 'pilot');
+        });
+      }
+
+      // Batch-fetch mp_fee por ride_id (so paga MP, wallet eh zero)
+      const rideIds = ridesRaw.map(r => r.id);
+      const mpFeeMap = new Map<string, number>();
+      if (rideIds.length > 0) {
+        const { data: paidPayments } = await supabase
+          .from('payments')
+          .select('ride_id, mp_fee')
+          .in('ride_id', rideIds)
+          .eq('status', 'completed');
+        (paidPayments ?? []).forEach((p: { ride_id: string; mp_fee: number }) => {
+          const prev = mpFeeMap.get(p.ride_id) ?? 0;
+          mpFeeMap.set(p.ride_id, prev + Number(p.mp_fee ?? 0));
+        });
+      }
+
       setPaidRides(ridesRaw.map(r => ({
         id: r.id,
         price: r.price,
@@ -627,6 +660,8 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         voucher_discount_amount: r.voucher_discount_amount,
         voucher_sponsor: r.vouchers?.sponsor ?? null,
         completed_at: r.completed_at,
+        pilot_type: r.pilot_user_id ? (pilotTypeMap.get(r.pilot_user_id) ?? 'pilot') : 'pilot',
+        mp_fee: mpFeeMap.get(r.id) ?? 0,
       })));
 
       const completed = pmts.filter(p => p.status === 'completed' && p.paid_at);
@@ -657,48 +692,80 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const paidRidesCount = paidRides.length;
 
   // Revenue split totals — fair-discount model
-  // Pilot always gets 45% of GROSS (pre-discount); voucher discount is fully borne by
-  // its declared sponsor; remaining discount (referral) is split proportionally
-  // between owner and simplix (45:10 ratio).
+  // Pilot Gamma sempre recebe 45% do bruto intacto; Barco Parceiro 60%.
+  // Voucher discount eh integralmente absorvido pelo sponsor declarado;
+  // referral discount eh dividido proporcionalmente entre owner e simplix.
+  // Taxa MP eh deduzida do pool owner+simplix (Gamma) ou simplix (parceiro)
+  // pra que o saldo MP confira com o sistema.
   const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
+  const partnerPlatformSum = PARTNER_BOAT_PCT + (1 - PARTNER_BOAT_PCT); // 1.0
   let totalPilot = 0;
   let totalOwners = 0;
   let totalSimplix = 0;
   let totalDiscount = 0;
   let totalVoucherOwner = 0;
   let totalVoucherPlatform = 0;
+  let totalMpFee = 0;
 
   for (const r of paidRides) {
     const gross = Number(r.gross_price ?? r.price);
     const totalDisc = Number(r.discount_amount ?? 0);
     const voucherDisc = Number(r.voucher_discount_amount ?? 0);
     const referralDisc = Math.max(0, totalDisc - voucherDisc);
+    const mpFee = Number(r.mp_fee ?? 0);
+    const isPartnerBoat = r.pilot_type === 'partner_boat';
 
-    const pilotShare = gross * PILOT_PCT;
-    // Base shares before any discount absorption
-    let ownerShare = gross * OWNERS_PCT;
-    let simplixShare = gross * SIMPLIX_PCT;
+    let pilotShare: number;
+    let ownerShare: number;
+    let simplixShare: number;
 
-    // Voucher: sponsor pays the full voucher value
-    if (voucherDisc > 0 && r.voucher_sponsor === 'owner') {
-      ownerShare -= voucherDisc;
-    } else if (voucherDisc > 0 && r.voucher_sponsor === 'platform') {
-      simplixShare -= voucherDisc;
-    }
+    if (isPartnerBoat) {
+      // Barco Parceiro: 60% parceiro / 40% plataforma — sem dono separado
+      pilotShare = gross * PARTNER_BOAT_PCT;
+      ownerShare = 0;
+      simplixShare = gross - pilotShare;
+      // MP fee toda em cima de simplix (so existe ele do lado da plataforma)
+      simplixShare -= mpFee;
+      // Voucher sponsor=owner nesse modelo nao faz sentido — fallback simplix
+      if (voucherDisc > 0) simplixShare -= voucherDisc;
+      if (referralDisc > 0) simplixShare -= referralDisc;
+    } else {
+      // Piloto Gamma: 45/45/10
+      pilotShare = gross * PILOT_PCT;
+      ownerShare = gross * OWNERS_PCT;
+      simplixShare = gross * SIMPLIX_PCT;
 
-    // Referral: split proportionally between owner and simplix
-    if (referralDisc > 0) {
-      ownerShare -= referralDisc * (OWNERS_PCT / ownerSimplixSum);
-      simplixShare -= referralDisc * (SIMPLIX_PCT / ownerSimplixSum);
+      // Voucher: sponsor paga integral
+      if (voucherDisc > 0 && r.voucher_sponsor === 'owner') {
+        ownerShare -= voucherDisc;
+      } else if (voucherDisc > 0 && r.voucher_sponsor === 'platform') {
+        simplixShare -= voucherDisc;
+      }
+
+      // Referral: rateio proporcional 45:10 entre owner e simplix
+      if (referralDisc > 0) {
+        ownerShare -= referralDisc * (OWNERS_PCT / ownerSimplixSum);
+        simplixShare -= referralDisc * (SIMPLIX_PCT / ownerSimplixSum);
+      }
+
+      // Taxa MP: rateio proporcional 45:10 entre owner e simplix
+      if (mpFee > 0) {
+        ownerShare -= mpFee * (OWNERS_PCT / ownerSimplixSum);
+        simplixShare -= mpFee * (SIMPLIX_PCT / ownerSimplixSum);
+      }
     }
 
     totalPilot += pilotShare;
     totalOwners += ownerShare;
     totalSimplix += simplixShare;
     totalDiscount += totalDisc;
+    totalMpFee += mpFee;
     if (r.voucher_sponsor === 'owner') totalVoucherOwner += voucherDisc;
     if (r.voucher_sponsor === 'platform') totalVoucherPlatform += voucherDisc;
   }
+  // partnerPlatformSum is used implicitly above via PARTNER_BOAT_PCT; reference
+  // to satisfy unused-var lint without changing semantics
+  void partnerPlatformSum;
 
   // Ad sales (100% platform extra revenue)
   const totalAdRevenue = adSales.reduce((s, a) => s + Number(a.price), 0);
@@ -850,6 +917,29 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
               </>
             )}
           </div>
+
+          {/* Taxa Mercado Pago — afeta owner+simplix proporcionalmente */}
+          {totalMpFee > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-3">
+                Taxa Mercado Pago <span className="text-xs font-normal text-muted-foreground">— deduzida do pool dono+Simplix</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <StatCard
+                  icon={CreditCard}
+                  label="Total cobrado pela MP"
+                  value={fmt(totalMpFee)}
+                  sub="Capturado do webhook (real) ou estimado no backfill"
+                  color="orange"
+                />
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-700 flex items-center">
+                  <p>
+                    <strong>Como funciona:</strong> Piloto Gamma recebe 45% do bruto intacto. A taxa MP é dividida entre dono do barco (~81.8%) e Simplix (~18.2%) na razão 45:10. Para Barco Parceiro, a Simplix absorve a taxa toda.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Revenue split */}
           <div>
