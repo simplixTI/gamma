@@ -587,26 +587,54 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
 
   useEffect(() => {
     const load = async () => {
-      const [pRes, wRes, adsRes, ridesRes] = await Promise.all([
-        supabase.from('payments')
+      // Carrega cada fonte separadamente — se uma falhar, nao derruba as outras
+      const safeQuery = async <T,>(label: string, p: Promise<{ data: T | null; error: unknown }>): Promise<T[]> => {
+        try {
+          const { data, error } = await p;
+          if (error) {
+            console.error(`[AdminFinancial] ${label} query error:`, error);
+            return [];
+          }
+          return (data ?? []) as unknown as T[];
+        } catch (e) {
+          console.error(`[AdminFinancial] ${label} crashed:`, e);
+          return [];
+        }
+      };
+
+      const [pData, wData, adsData, ridesData] = await Promise.all([
+        safeQuery<PaymentRow>('payments', supabase.from('payments')
           .select('id, amount, status, paid_at, created_at, ride_id, mp_fee')
           .order('created_at', { ascending: false })
-          .limit(100),
-        supabase.from('wallet_transactions')
+          .limit(100) as unknown as Promise<{ data: PaymentRow[] | null; error: unknown }>),
+        safeQuery<WalletTx>('wallet_transactions', supabase.from('wallet_transactions')
           .select('id, amount, type, status, created_at, description')
           .order('created_at', { ascending: false })
-          .limit(100),
-        supabase.from('partner_ads')
+          .limit(100) as unknown as Promise<{ data: WalletTx[] | null; error: unknown }>),
+        safeQuery<AdSale>('partner_ads', supabase.from('partner_ads')
           .select('id, price, sold_at, duration_days, advertiser_name, title')
           .not('sold_at', 'is', null)
           .order('sold_at', { ascending: false })
-          .limit(50),
-        supabase.from('rides')
-          .select('id, price, gross_price, discount_amount, voucher_discount_amount, completed_at, pilot_user_id, vouchers:voucher_id(sponsor)')
+          .limit(50) as unknown as Promise<{ data: AdSale[] | null; error: unknown }>),
+        safeQuery<{
+          id: string;
+          price: number;
+          gross_price: number | null;
+          discount_amount: number | null;
+          voucher_discount_amount: number | null;
+          completed_at: string | null;
+          pilot_user_id: string | null;
+        }>('rides', supabase.from('rides')
+          .select('id, price, gross_price, discount_amount, voucher_discount_amount, completed_at, pilot_user_id')
           .eq('payment_status', 'paid')
           .order('completed_at', { ascending: false })
-          .limit(500),
+          .limit(500) as unknown as Promise<{ data: unknown[] | null; error: unknown }>),
       ]);
+
+      const pRes = { data: pData };
+      const wRes = { data: wData };
+      const adsRes = { data: adsData };
+      const ridesRes = { data: ridesData };
 
       const pmts = pRes.data ?? [];
       setPayments(pmts);
@@ -621,7 +649,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         voucher_discount_amount: number | null;
         completed_at: string | null;
         pilot_user_id: string | null;
-        vouchers: { sponsor: 'owner' | 'platform' } | null;
       }>;
 
       // Batch-fetch pilot_type para os pilotos das rides
@@ -658,7 +685,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         gross_price: r.gross_price,
         discount_amount: r.discount_amount,
         voucher_discount_amount: r.voucher_discount_amount,
-        voucher_sponsor: r.vouchers?.sponsor ?? null,
+        voucher_sponsor: null, // join removido — buscar separadamente quando necessario
         completed_at: r.completed_at,
         pilot_type: r.pilot_user_id ? (pilotTypeMap.get(r.pilot_user_id) ?? 'pilot') : 'pilot',
         mp_fee: mpFeeMap.get(r.id) ?? 0,
