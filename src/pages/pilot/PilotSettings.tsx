@@ -5,6 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
 import SimplixFooter from '@/components/SimplixFooter';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog';
 
 const PilotSettings = () => {
   const navigate = useNavigate();
@@ -114,6 +115,11 @@ const PilotSettings = () => {
               onCheckedChange={(checked) => handleToggle('darkMode', checked, 'Modo escuro')}
             />
           </div>
+        </div>
+
+        {/* Change Password */}
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <ChangePasswordDialog />
         </div>
 
         {/* About */}

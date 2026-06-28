@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -148,6 +149,11 @@ const Settings = () => {
           </div>
           <ChevronRight className="w-5 h-5 text-muted" />
         </button>
+
+        {/* Change Password */}
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <ChangePasswordDialog />
+        </div>
 
         {/* About */}
         <div className="pt-6 border-t border-border">

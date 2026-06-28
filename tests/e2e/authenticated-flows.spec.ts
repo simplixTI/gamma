@@ -16,7 +16,8 @@ async function loginViaForm(page: Page, path: string, email: string, password: s
   await page.goto(path, { waitUntil: 'networkidle' });
   await page.locator('input[type="email"]').first().fill(email);
   await page.locator('input[type="password"]').first().fill(password);
-  await page.locator('button').filter({ hasText: SUBMIT_RE }).first().click();
+  // Auth pages have a TAB "Entrar" and a SUBMIT "Entrar" — pick the last one
+  await page.getByRole('button', { name: /^entrar$/i }).last().click();
   await page.waitForURL(expectUrl, { timeout: 20_000 });
 }
 
@@ -51,12 +52,12 @@ test.describe('Passenger flow', () => {
   test.skip(!haveAllCreds, 'E2E_* env vars missing');
 
   test('passenger logs in via /auth/passenger', async ({ page }) => {
-    await loginViaForm(page, '/auth/passenger', PASSENGER_EMAIL, PASSENGER_PASSWORD, /\/passenger(?!\/?(auth|login))/);
+    await loginViaForm(page, '/auth/passenger', PASSENGER_EMAIL, PASSENGER_PASSWORD, /^https?:\/\/[^/]+\/passenger($|\/(?!auth|login))/);
     expect(page.url()).toMatch(/\/passenger/);
   });
 
   test('passenger can navigate to settings, history, profile, wallet', async ({ page }) => {
-    await loginViaForm(page, '/auth/passenger', PASSENGER_EMAIL, PASSENGER_PASSWORD, /\/passenger(?!\/?(auth|login))/);
+    await loginViaForm(page, '/auth/passenger', PASSENGER_EMAIL, PASSENGER_PASSWORD, /^https?:\/\/[^/]+\/passenger($|\/(?!auth|login))/);
     const routes = ['/passenger/settings', '/passenger/history', '/passenger/profile', '/passenger/wallet', '/passenger/favorites', '/passenger/help', '/passenger/referral'];
     for (const path of routes) {
       await page.goto(path, { waitUntil: 'networkidle' });
@@ -70,12 +71,12 @@ test.describe('Pilot flow', () => {
   test.skip(!haveAllCreds, 'E2E_* env vars missing');
 
   test('pilot logs in via /auth/pilot', async ({ page }) => {
-    await loginViaForm(page, '/auth/pilot', PILOT_EMAIL, PILOT_PASSWORD, /\/pilot(?!\/?(auth|login))/);
+    await loginViaForm(page, '/auth/pilot', PILOT_EMAIL, PILOT_PASSWORD, /^https?:\/\/[^/]+\/pilot($|\/(?!auth|login))/);
     expect(page.url()).toMatch(/\/pilot/);
   });
 
   test('pilot can navigate to history, profile, earnings, settings', async ({ page }) => {
-    await loginViaForm(page, '/auth/pilot', PILOT_EMAIL, PILOT_PASSWORD, /\/pilot(?!\/?(auth|login))/);
+    await loginViaForm(page, '/auth/pilot', PILOT_EMAIL, PILOT_PASSWORD, /^https?:\/\/[^/]+\/pilot($|\/(?!auth|login))/);
     const routes = ['/pilot/history', '/pilot/profile', '/pilot/earnings', '/pilot/settings', '/pilot/documents'];
     for (const path of routes) {
       await page.goto(path, { waitUntil: 'networkidle' });
@@ -137,6 +138,61 @@ test.describe('Admin creates user via edge function (real end-to-end)', () => {
     expect(json.email_id).toBeTruthy();
 
     console.warn(`[cleanup] e2e pilot ${disposable} id=${json.user_id}`);
+  });
+});
+
+test.describe('Change password flow', () => {
+  test.skip(!haveAllCreds, 'E2E_* env vars missing');
+
+  test('passenger can change password and log in with new one', async ({ page, browser }) => {
+    const newPwd = `E2eNew-${Date.now()}`;
+
+    // 1. Login com senha original
+    await loginViaForm(page, '/auth/passenger', PASSENGER_EMAIL, PASSENGER_PASSWORD, /^https?:\/\/[^/]+\/passenger($|\/(?!auth|login))/);
+
+    // 2. Espera a sessao ser persistida em localStorage antes de navegar
+    await page.waitForFunction(
+      () => Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token')),
+      { timeout: 10_000 },
+    );
+
+    // 3. Vai pra Settings
+    await page.goto('/passenger/settings');
+    await expect(page.getByRole('heading', { name: /configura[cç][oõ]es/i })).toBeVisible({ timeout: 15_000 });
+
+    // 3. Abre dialog
+    await page.locator('button').filter({ hasText: /alterar senha/i }).first().click();
+    await page.locator('input#new-pwd').fill(newPwd);
+    await page.locator('input#confirm-pwd').fill(newPwd);
+    await page.locator('button[type="submit"]').filter({ hasText: /salvar/i }).click();
+
+    // 4. Confirma sucesso (toast)
+    await expect(page.getByText(/senha alterada/i)).toBeVisible({ timeout: 5_000 });
+
+    // 5. Desloga e tenta logar com senha nova em outra sessao
+    const ctx = await browser.newContext();
+    const fresh = await ctx.newPage();
+    await loginViaForm(fresh, '/auth/passenger', PASSENGER_EMAIL, newPwd, /^https?:\/\/[^/]+\/passenger($|\/(?!auth|login))/);
+    expect(fresh.url()).toMatch(/\/passenger/);
+    await ctx.close();
+
+    // 6. Reseta a senha original via Management API pra nao quebrar testes futuros
+    const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+    const projectRef = process.env.SUPABASE_PROJECT_REF;
+    if (accessToken && projectRef) {
+      const sql = `UPDATE auth.users SET encrypted_password = crypt('${PASSENGER_PASSWORD}', gen_salt('bf')) WHERE email = '${PASSENGER_EMAIL}';`;
+      const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: sql }),
+      });
+      expect(res.ok, `Failed to reset password: ${await res.text()}`).toBeTruthy();
+    } else {
+      console.warn('SUPABASE_ACCESS_TOKEN missing — passenger password left as new value, manual reset needed');
+    }
   });
 });
 
