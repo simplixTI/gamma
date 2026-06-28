@@ -204,11 +204,40 @@ Deno.serve(async (req: Request) => {
 
     const newUserId = createdData.user.id;
 
-    // 2. Gera o link de convite sem disparar email
+    // 2a. Garante user_roles + profile (nao depende do trigger handle_new_gamma_user)
+    await adminClient.from('user_roles').upsert(
+      { user_id: newUserId, role: body.role },
+      { onConflict: 'user_id' },
+    );
+
+    if (body.role === 'passenger') {
+      await adminClient.from('passenger_profiles').upsert({
+        user_id: newUserId,
+        full_name: body.full_name,
+        phone: body.phone ?? '',
+        email: body.email,
+        cpf: body.cpf ?? '',
+      }, { onConflict: 'user_id' });
+    } else {
+      await adminClient.from('pilot_profiles').upsert({
+        user_id: newUserId,
+        full_name: body.full_name,
+        phone: body.phone ?? '',
+        email: body.email,
+        cpf: body.cpf ?? '',
+        boat_type: body.boat_type ?? '',
+        boat_identification: body.boat_identification ?? '',
+        pilot_type: body.pilot_type ?? 'pilot',
+        approval_status: 'pending',
+        is_active: false,
+      }, { onConflict: 'user_id' });
+    }
+
+    // 2b. Gera o link de convite sem disparar email
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: 'invite',
       email: body.email,
-      options: { redirectTo: `${PUBLIC_SITE_URL}/auth/callback` },
+      options: { redirectTo: `${PUBLIC_SITE_URL}/auth/set-password` },
     });
 
     if (linkError || !linkData?.properties?.action_link) {

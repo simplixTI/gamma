@@ -17,6 +17,7 @@ import Landing from "./pages/Landing";
 import PassengerAuth from "./pages/auth/PassengerAuth";
 import PilotAuth from "./pages/auth/PilotAuth";
 import AuthCallback from "./pages/auth/AuthCallback";
+import SetPassword from "./pages/auth/SetPassword";
 import TermsOfUse from "./pages/TermsOfUse";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -137,6 +138,7 @@ const App = () => (
                 <Route path="/auth/passenger" element={<PassengerAuth />} />
                 <Route path="/auth/pilot" element={<PilotAuth />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/set-password" element={<SetPassword />} />
                 
                 {/* Passenger routes */}
                 <Route path="/passenger" element={
