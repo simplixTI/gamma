@@ -28,7 +28,7 @@ test.describe('Admin login + logout', () => {
     await page.goto('/admin/login', { waitUntil: 'networkidle' });
     await page.locator('input[type="email"]').first().fill(ADMIN_EMAIL!);
     await page.locator('input[type="password"]').first().fill(ADMIN_PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
+    await page.locator('button').filter({ hasText: /entrar|continuar|enviar/i }).first().click();
 
     await page.waitForURL(/\/admin(?!\/login)/, { timeout: 15_000 });
     expect(page.url()).toMatch(/\/admin(?!\/login)/);
@@ -50,7 +50,7 @@ test.describe('Admin navigation', () => {
     await page.goto('/admin/login', { waitUntil: 'networkidle' });
     await page.locator('input[type="email"]').first().fill(ADMIN_EMAIL!);
     await page.locator('input[type="password"]').first().fill(ADMIN_PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
+    await page.locator('button').filter({ hasText: /entrar|continuar|enviar/i }).first().click();
     await page.waitForURL(/\/admin(?!\/login)/, { timeout: 15_000 });
 
     const sections = ['/admin', '/admin/users', '/admin/pilots', '/admin/rides', '/admin/financial', '/admin/ads', '/admin/vouchers'];
@@ -69,7 +69,7 @@ test.describe('Passenger login', () => {
     await page.goto('/auth/passenger', { waitUntil: 'networkidle' });
     await page.locator('input[type="email"]').first().fill(PASSENGER_EMAIL!);
     await page.locator('input[type="password"]').first().fill(PASSENGER_PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
+    await page.locator('button').filter({ hasText: /entrar|continuar|enviar/i }).first().click();
 
     await page.waitForURL(/\/passenger(?!\/?(auth|login))/, { timeout: 15_000 });
     expect(page.url()).toContain('/passenger');
@@ -83,7 +83,7 @@ test.describe('Pilot login', () => {
     await page.goto('/auth/pilot', { waitUntil: 'networkidle' });
     await page.locator('input[type="email"]').first().fill(PILOT_EMAIL!);
     await page.locator('input[type="password"]').first().fill(PILOT_PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
+    await page.locator('button').filter({ hasText: /entrar|continuar|enviar/i }).first().click();
 
     await page.waitForURL(/\/pilot(?!\/?(auth|login))/, { timeout: 15_000 });
     expect(page.url()).toContain('/pilot');
@@ -111,7 +111,7 @@ test.describe('Edge function — admin-create-user uses Resend (not Supabase def
     await page.goto('/admin/login', { waitUntil: 'networkidle' });
     await page.locator('input[type="email"]').first().fill(ADMIN_EMAIL!);
     await page.locator('input[type="password"]').first().fill(ADMIN_PASSWORD!);
-    await page.locator('button[type="submit"]').first().click();
+    await page.locator('button').filter({ hasText: /entrar|continuar|enviar/i }).first().click();
     await page.waitForURL(/\/admin(?!\/login)/, { timeout: 15_000 });
 
     const token = await page.evaluate(() => {
