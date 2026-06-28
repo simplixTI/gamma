@@ -231,19 +231,15 @@ const AdminUsers = () => {
     }
     setSavingPassenger(true);
     if (passengerModal === 'create') {
-      const { data, error } = await supabase
-        .from('passenger_profiles')
-        .insert([{ ...passengerForm }])
-        .select('id, full_name, email, phone, cpf, rating, created_at')
-        .single();
-      if (error) {
-        toast.error('Erro ao criar perfil: ' + error.message);
+      const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
+        body: { role: 'passenger', ...passengerForm },
+      });
+      if (error || !result?.success) {
+        toast.error('Erro ao criar perfil: ' + (error?.message ?? result?.error ?? 'desconhecido'));
       } else {
-        // Also insert user_roles record if possible (best-effort, no auth user yet)
-        await supabase.from('user_roles').insert([{ user_id: data.id, role: 'passenger' }]);
-        setPassengers(prev => [data, ...prev]);
-        setPassengerTotal(t => t + 1);
-        toast.success('Perfil criado. Peça ao usuário para se cadastrar com este e-mail.');
+        toast.success('Convite enviado por e-mail. O usuário aparecerá após definir a senha.');
+        await loadPassengers(0);
+        setPassengerPage(0);
         closePassengerModal();
       }
     } else if (passengerModal === 'edit' && editingPassengerId) {
@@ -314,18 +310,15 @@ const AdminUsers = () => {
     }
     setSavingPilot(true);
     if (pilotModal === 'create') {
-      const { data, error } = await supabase
-        .from('pilot_profiles')
-        .insert([{ ...pilotForm, approval_status: 'pending', is_active: false }])
-        .select('id, user_id, full_name, email, phone, cpf, rating, total_rides, total_earnings, approval_status, is_active, boat_type, boat_identification, pilot_type, created_at')
-        .single();
-      if (error) {
-        toast.error('Erro ao criar piloto: ' + error.message);
+      const { data: result, error } = await supabase.functions.invoke('admin-create-user', {
+        body: { role: 'pilot', ...pilotForm },
+      });
+      if (error || !result?.success) {
+        toast.error('Erro ao criar piloto: ' + (error?.message ?? result?.error ?? 'desconhecido'));
       } else {
-        await supabase.from('user_roles').insert([{ user_id: data.id, role: 'pilot' }]);
-        setPilots(prev => [data, ...prev]);
-        setPilotTotal(t => t + 1);
-        toast.success('Perfil criado. Peça ao usuário para se cadastrar com este e-mail.');
+        toast.success('Convite enviado por e-mail. O piloto aparecerá após definir a senha.');
+        await loadPilots(0);
+        setPilotPage(0);
         closePilotModal();
       }
     } else if (pilotModal === 'edit' && editingPilotId) {
