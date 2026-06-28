@@ -50,13 +50,15 @@ const sendViaResend = async (
   }
 };
 
-const buildInviteHtml = (params: {
+const buildCredentialsHtml = (params: {
   fullName: string;
   role: Role;
-  inviteUrl: string;
+  email: string;
+  tempPassword: string;
+  loginUrl: string;
 }): string => {
   const roleLabel = params.role === 'pilot' ? 'piloto' : 'passageiro';
-  const ctaLabel = params.role === 'pilot' ? 'Ativar conta de piloto' : 'Ativar minha conta';
+  const ctaLabel = params.role === 'pilot' ? 'Acessar app de piloto' : 'Acessar app Gamma';
   const intro = params.role === 'pilot'
     ? 'Sua conta de piloto da Gamma foi criada pela equipe administrativa.'
     : 'Sua conta da Gamma foi criada pela equipe administrativa.';
@@ -80,28 +82,28 @@ const buildInviteHtml = (params: {
         <h2 style="margin:0 0 8px;font-size:24px;font-weight:700;">Olá, ${params.fullName}!</h2>
         <p style="margin:0 0 16px;font-size:15px;color:#3a3a3c;line-height:1.5;">${intro}</p>
         <p style="margin:0 0 24px;font-size:15px;color:#3a3a3c;line-height:1.5;">
-          Para começar a usar como ${roleLabel}, clique no botão abaixo, defina sua senha e acesse o app.
+          Use as credenciais abaixo para entrar como ${roleLabel}. Recomendamos trocar a senha nas configurações apos o primeiro login.
         </p>
 
+        <div style="background:#f5f5f7;border-radius:10px;padding:20px;margin-bottom:24px;">
+          <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#86868b;">Email</p>
+          <p style="margin:0 0 16px;font-size:15px;font-weight:600;word-break:break-all;">${params.email}</p>
+          <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#86868b;">Senha temporaria</p>
+          <p style="margin:0;font-size:18px;font-weight:700;font-family:'Courier New',monospace;color:#00A8E8;">${params.tempPassword}</p>
+        </div>
+
         <div style="text-align:center;margin:32px 0;">
-          <a href="${params.inviteUrl}"
+          <a href="${params.loginUrl}"
              style="display:inline-block;background:#00A8E8;color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:10px;">
             ${ctaLabel}
           </a>
         </div>
 
-        <p style="margin:0 0 8px;font-size:13px;color:#6e6e73;text-align:center;">
-          Ou copie o link abaixo no seu navegador:
-        </p>
-        <p style="margin:0 0 24px;font-size:12px;color:#86868b;text-align:center;word-break:break-all;">
-          ${params.inviteUrl}
-        </p>
-
         <hr style="border:none;border-top:1px solid #f0f0f0;margin:24px 0;" />
 
         <p style="margin:0;font-size:11px;color:#86868b;text-align:center;line-height:1.6;">
-          Se você não esperava este convite, pode ignorar este e-mail.<br/>
-          Gamma — Transporte aquático na Ilha da Gigoia<br/>
+          Se voce nao esperava este email, pode ignorar.<br/>
+          Gamma — Transporte aquatico na Ilha da Gigoia<br/>
           <a href="https://gamma.app.br" style="color:#86868b;text-decoration:underline;">gamma.app.br</a>
         </p>
       </td>
@@ -109,6 +111,26 @@ const buildInviteHtml = (params: {
   </table>
 </body>
 </html>`;
+};
+
+// Generates a 12-char password: 4 lower + 4 upper + 3 digits + 1 symbol
+const generateTempPassword = (): string => {
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const symbol = '!@#$';
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  const chars: string[] = [];
+  for (let i = 0; i < 4; i++) chars.push(pick(lower));
+  for (let i = 0; i < 4; i++) chars.push(pick(upper));
+  for (let i = 0; i < 3; i++) chars.push(pick(digits));
+  chars.push(pick(symbol));
+  // Fisher-Yates shuffle
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 };
 
 Deno.serve(async (req: Request) => {
@@ -189,10 +211,13 @@ Deno.serve(async (req: Request) => {
       userMetadata.boat_identification = body.boat_identification ?? '';
     }
 
-    // 1. Cria o auth.user sem disparar email default da Supabase
+    const tempPassword = generateTempPassword();
+
+    // 1. Cria o auth.user com senha temporaria, email ja confirmado (sem invite OTP)
     const { data: createdData, error: createdError } = await adminClient.auth.admin.createUser({
       email: body.email,
-      email_confirm: false,
+      password: tempPassword,
+      email_confirm: true,
       user_metadata: userMetadata,
     });
 
@@ -233,34 +258,17 @@ Deno.serve(async (req: Request) => {
       }, { onConflict: 'user_id' });
     }
 
-    // 2b. Gera o link de convite sem disparar email
-    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-      type: 'invite',
-      email: body.email,
-      options: { redirectTo: `${PUBLIC_SITE_URL}/auth/set-password` },
-    });
+    // 3. Envia email branded via Resend (sem token OTP, evita prefetch de Gmail)
+    const loginUrl = body.role === 'pilot'
+      ? `${PUBLIC_SITE_URL}/auth/pilot`
+      : `${PUBLIC_SITE_URL}/auth/passenger`;
 
-    if (linkError || !linkData?.properties?.action_link) {
-      // Best-effort rollback do auth.user pra nao deixar conta orfa
-      await adminClient.auth.admin.deleteUser(newUserId).catch(() => {});
-      return new Response(JSON.stringify({ success: false, error: linkError?.message ?? 'link_failed' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 3. Para piloto, define pilot_type (trigger nao seta)
-    if (body.role === 'pilot' && body.pilot_type) {
-      await adminClient
-        .from('pilot_profiles')
-        .update({ pilot_type: body.pilot_type })
-        .eq('user_id', newUserId);
-    }
-
-    // 4. Envia email branded via Resend
-    const html = buildInviteHtml({
+    const html = buildCredentialsHtml({
       fullName: body.full_name,
       role: body.role,
-      inviteUrl: linkData.properties.action_link,
+      email: body.email,
+      tempPassword,
+      loginUrl,
     });
 
     const subject = body.role === 'pilot'
