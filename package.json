@@ -15,7 +15,9 @@
     "cap:run:ios": "npm run build && npx cap run ios",
     "cap:run:android": "npm run build && npx cap run android",
     "dev:admin": "vite --port 8081 --open /admin/login",
-    "build:admin": "vite build --outDir dist-admin"
+    "build:admin": "vite build --outDir dist-admin",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
@@ -85,6 +87,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
@@ -102,5 +105,21 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
     "vite-plugin-pwa": "^1.3.0"
-  }
+  },
+  "description": "<<<<<<< HEAD # Gamma - Transporte Aquático na Gigoia",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simplixTI/gamma.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/simplixTI/gamma/issues"
+  },
+  "homepage": "https://github.com/simplixTI/gamma#readme"
 }
