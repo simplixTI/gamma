@@ -32,6 +32,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="gamma.app.br" />
+                <data android:scheme="https" android:host="www.gamma.app.br" />
             </intent-filter>
 
             <!-- Custom scheme fallback para deep links proprietarios -->

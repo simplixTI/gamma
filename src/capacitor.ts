@@ -60,19 +60,23 @@ export async function initMobilePlugins() {
       }
     });
 
-    // Handle OAuth deep links (Google sign-in callback on native)
-    // When Supabase redirects back to gamma.app.br/auth/callback, Capacitor
-    // intercepts the URL here. We pass the full URL to the WebView so
-    // supabase-js can parse the access_token/code from the hash/query params.
+    // Handle OAuth deep links (Google sign-in callback on native).
+    // Supabase redireciona para .../auth/callback — pode ser apex (gamma.app.br)
+    // ou www (canonical apos redirect). Aceita ambos.
     CapApp.addListener('appUrlOpen', async ({ url }) => {
       if (url.includes('access_token') || url.includes('code=') || url.includes('/auth/callback')) {
-        // Validate URL origin to prevent malicious deep links
         try {
           const urlObj = new URL(url);
-          const allowedOrigin = import.meta.env.VITE_APP_URL || 'https://gamma.app.br';
-          const allowedOriginObj = new URL(allowedOrigin);
+          const ALLOWED_ORIGINS = new Set([
+            'https://gamma.app.br',
+            'https://www.gamma.app.br',
+          ]);
+          const envOrigin = import.meta.env.VITE_APP_URL;
+          if (envOrigin) {
+            try { ALLOWED_ORIGINS.add(new URL(envOrigin).origin); } catch { /* ignore */ }
+          }
 
-          if (urlObj.origin === allowedOriginObj.origin) {
+          if (ALLOWED_ORIGINS.has(urlObj.origin)) {
             window.location.href = url;
           } else {
             console.warn('[Capacitor] Rejected deep link from untrusted origin:', urlObj.origin);

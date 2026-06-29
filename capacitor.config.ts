@@ -11,12 +11,16 @@ const config: CapacitorConfig = {
   // (ex: `npx cap run` sem server.url ativo). Em producao server.url tem precedencia.
   webDir: 'dist',
   server: {
-    url: 'https://gamma.app.br',
+    // Canonical eh www.gamma.app.br (apex redireciona 308 para www).
+    // Usar www aqui evita redirect dentro da WebView e mantem origin consistente
+    // para localStorage / sessao Supabase.
+    url: 'https://www.gamma.app.br',
     androidScheme: 'https',
     iosScheme: 'https',
     cleartext: false,
     allowNavigation: [
       'gamma.app.br',
+      'www.gamma.app.br',
       '*.supabase.co',
       '*.googleapis.com',
       'accounts.google.com',
