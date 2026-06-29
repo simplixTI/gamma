@@ -240,6 +240,13 @@ const RequestRide = () => {
     );
   }, []);
 
+  // Auto-fill origem com deck mais proximo se nao houver origem definida
+  useEffect(() => {
+    if (origin || !nearestPierId) return;
+    const nearest = locations.find((l) => l.id === nearestPierId);
+    if (nearest) setOrigin(nearest);
+  }, [origin, nearestPierId, setOrigin]);
+
   // Piers de Zona A (PASSARELA, JACARÉ, INVASÃO) — preço promocional R$10 (era R$13)
   const ZONE_A_PIERS = new Set(['7', '18', '19']);
   const isPromoRoute = !!(origin && destination && (ZONE_A_PIERS.has(origin.id) || ZONE_A_PIERS.has(destination.id)));
