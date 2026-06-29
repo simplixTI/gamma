@@ -785,11 +785,11 @@ const AdminUsers = () => {
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="pilot">Piloto Gamma (recebe 45%)</option>
-                  <option value="partner_boat">Barco Parceiro (recebe 60%)</option>
+                  <option value="partner_boat">Barco Parceiro (recebe 70%)</option>
                 </select>
                 <p className="text-xs text-muted-foreground">
                   {pilotForm.pilot_type === 'partner_boat'
-                    ? 'Dono do próprio barco. Split: 60% dono / 40% plataforma.'
+                    ? 'Dono do próprio barco. Split: 70% dono / 30% plataforma.'
                     : 'Funcionário Gamma dirigindo barco da plataforma. Split: 45% piloto / 45% dono Gamma / 10% plataforma.'}
                 </p>
               </div>

@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 
 // Split constants — kept in sync with platform_config table
 // Gamma boats (pilot_type='pilot'):       pilot 45% / owners 45% / simplix 10%
-// Partner boats (pilot_type='partner_boat'): owner 60% / simplix 40%
+// Partner boats (pilot_type='partner_boat'): owner 70% / simplix 30%
 const PILOT_PCT = 0.45;
 const SIMPLIX_PCT = 0.10;
 const OWNERS_PCT = 0.45;
-const PARTNER_BOAT_PCT = 0.60;
+const PARTNER_BOAT_PCT = 0.70;
 
 type PilotType = 'pilot' | 'partner_boat';
 
@@ -719,7 +719,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const paidRidesCount = paidRides.length;
 
   // Revenue split totals — fair-discount model
-  // Pilot Gamma sempre recebe 45% do bruto intacto; Barco Parceiro 60%.
+  // Pilot Gamma sempre recebe 45% do bruto intacto; Barco Parceiro 70%.
   // Voucher discount eh integralmente absorvido pelo sponsor declarado;
   // referral discount eh dividido proporcionalmente entre owner e simplix.
   // Taxa MP eh deduzida do pool owner+simplix (Gamma) ou simplix (parceiro)
@@ -727,10 +727,10 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
   const partnerPlatformSum = PARTNER_BOAT_PCT + (1 - PARTNER_BOAT_PCT); // 1.0
   let totalPilotGamma = 0;       // 45% pra pilotos Gamma
-  let totalPartnerBoat = 0;      // 60% pra barcos parceiros
+  let totalPartnerBoat = 0;      // 70% pra barcos parceiros
   let totalOwners = 0;           // 45% pros donos Gamma (apenas rides Gamma)
   let totalSimplixGamma = 0;     // 10% Simplix de rides Gamma
-  let totalSimplixPartner = 0;   // 40% Simplix de rides parceiros
+  let totalSimplixPartner = 0;   // 30% Simplix de rides parceiros
   let totalDiscount = 0;
   let totalVoucherOwner = 0;
   let totalVoucherPlatform = 0;
@@ -749,7 +749,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
     let simplixShare: number;
 
     if (isPartnerBoat) {
-      // Barco Parceiro: 60% parceiro / 40% plataforma — sem dono separado
+      // Barco Parceiro: 70% parceiro / 30% plataforma — sem dono separado
       pilotShare = gross * PARTNER_BOAT_PCT;
       ownerShare = 0;
       simplixShare = gross - pilotShare;
@@ -1003,21 +1003,21 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                     <Users className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">DONOS DO BARCO (45%)</p>
+                    <p className="text-xs text-muted-foreground font-medium">BARCOS GAMMA (45%)</p>
                     <p className="text-xl font-bold text-foreground">{fmt(totalOwners)}</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">Após descontos e taxa MP rateados</p>
               </div>
 
-              {/* Barcos Parceiros 60% */}
+              {/* Barcos Parceiros 70% */}
               <div className="bg-card rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-700 flex items-center justify-center">
                     <Ship className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-emerald-700/80 font-medium">BARCOS PARCEIROS (60%)</p>
+                    <p className="text-xs text-emerald-700/80 font-medium">BARCOS PARCEIROS (70%)</p>
                     <p className="text-xl font-bold text-foreground">{fmt(totalPartnerBoat)}</p>
                   </div>
                 </div>
@@ -1041,7 +1041,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                     <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixGamma)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>↳ 40% rides Parceiros</span>
+                    <span>↳ 30% rides Parceiros</span>
                     <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixPartner)}</span>
                   </div>
                 </div>
