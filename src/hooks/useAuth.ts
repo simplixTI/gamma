@@ -221,6 +221,8 @@ export function useAuth() {
       cpf: string;
       boatType?: string;
       boatIdentification?: string;
+      boatCapacity?: number;
+      licenseNumber?: string;
       pilotType?: 'pilot' | 'partner_boat';
     }
   ) => {
@@ -285,6 +287,8 @@ export function useAuth() {
             cpf: profileData.cpf,
             boat_type: profileData.boatType,
             boat_identification: profileData.boatIdentification,
+            boat_capacity: profileData.boatCapacity ?? 8,
+            license_number: profileData.licenseNumber ?? null,
             pilot_type: profileData.pilotType ?? 'pilot',
           });
 

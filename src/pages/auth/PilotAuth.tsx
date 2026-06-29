@@ -32,6 +32,8 @@ const signUpSchema = z.object({
   password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
   boatType: z.string().min(1, 'Tipo de barco é obrigatório'),
   boatIdentification: z.string().min(1, 'Identificação do barco é obrigatória'),
+  boatCapacity: z.number().int().min(1, 'Capacidade mínima é 1').max(20, 'Capacidade máxima é 20'),
+  licenseNumber: z.string().min(3, 'Número da Habilitação Náutica (ARRAIS) é obrigatório'),
 });
 
 const signInSchema = z.object({
@@ -75,6 +77,8 @@ const PilotAuth = () => {
   const [password, setPassword] = useState('');
   const [boatType, setBoatType] = useState('');
   const [boatIdentification, setBoatIdentification] = useState('');
+  const [boatCapacity, setBoatCapacity] = useState<number>(8);
+  const [licenseNumber, setLicenseNumber] = useState('');
   // Default: novos cadastros entram como partner_boat. Admin reclassifica para 'pilot'
   // (funcionario Gamma) quando aplicavel via /admin/users.
   const [pilotType] = useState<'pilot' | 'partner_boat'>('partner_boat');
@@ -152,6 +156,8 @@ const PilotAuth = () => {
         password,
         boatType,
         boatIdentification,
+        boatCapacity,
+        licenseNumber,
       });
 
       if (!validation.success) {
@@ -167,6 +173,8 @@ const PilotAuth = () => {
         cpf: cpf.replace(/\D/g, ''),
         boatType,
         boatIdentification,
+        boatCapacity,
+        licenseNumber: licenseNumber.trim(),
         pilotType,
       });
 
@@ -616,6 +624,32 @@ const PilotAuth = () => {
                           className="pl-10"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="boatCapacity">Capacidade de Passageiros *</Label>
+                      <Input
+                        id="boatCapacity"
+                        type="number"
+                        min={1}
+                        max={20}
+                        placeholder="8"
+                        value={boatCapacity}
+                        onChange={(e) => setBoatCapacity(parseInt(e.target.value) || 1)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="licenseNumber">Número da Habilitação Náutica (ARRAIS) *</Label>
+                      <Input
+                        id="licenseNumber"
+                        placeholder="ARRAIS-AMADOR-XXXXX"
+                        value={licenseNumber}
+                        onChange={(e) => setLicenseNumber(e.target.value.toUpperCase())}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Obrigatório — equivalente à CNH para conduzir embarcação.
+                      </p>
                     </div>
 
                     {/* Boat Photos */}

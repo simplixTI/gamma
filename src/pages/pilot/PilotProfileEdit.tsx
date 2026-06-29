@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Phone, Ship, CreditCard, Camera, Save, Check } from 'lucide-react';
+import { ArrowLeft, User, Phone, Ship, CreditCard, Camera, Save, Check, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -136,7 +136,7 @@ const PilotProfileEdit = () => {
         photo_url: data.photo_url ?? '',
         boat_name: data.boat_identification ?? '',
         boat_capacity: data.boat_capacity ?? 8,
-        license_number: '',
+        license_number: data.license_number ?? '',
         pix_key: data.pix_key ?? '',
         pix_key_type: data.pix_key_type ?? '',
         bank_name: data.bank_name ?? '',
@@ -299,15 +299,13 @@ const PilotProfileEdit = () => {
             <User className="w-4 h-4 text-primary" />
             Informações Pessoais
           </h2>
-          
+
           <div className="space-y-2">
-            <Label htmlFor="name">Nome Completo *</Label>
-            <Input
-              id="name"
-              value={profile.name || ''}
-              onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              placeholder="Seu nome completo"
-            />
+            <Label className="text-muted-foreground">Nome Completo</Label>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-muted/40 border border-border">
+              <span className="text-sm text-foreground truncate">{profile.name || '—'}</span>
+              <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -321,43 +319,39 @@ const PilotProfileEdit = () => {
           </div>
         </div>
 
-        {/* Boat Info */}
+        {/* Boat Info — locked, vinculado aos documentos aprovados */}
         <div className="bg-card rounded-xl p-4 shadow-sm space-y-4">
           <h2 className="font-semibold text-foreground flex items-center gap-2">
             <Ship className="w-4 h-4 text-primary" />
             Informações do Barco
           </h2>
-          
+          <p className="text-xs text-muted-foreground -mt-2 flex items-start gap-1.5">
+            <Lock className="w-3 h-3 mt-0.5 shrink-0" />
+            <span>Vinculados aos documentos aprovados. Para alterar, contate a equipe Gamma.</span>
+          </p>
+
           <div className="space-y-2">
-            <Label htmlFor="boat_name">Nome do Barco</Label>
-            <Input
-              id="boat_name"
-              value={profile.boat_name || ''}
-              onChange={(e) => setProfile({ ...profile, boat_name: e.target.value })}
-              placeholder="Ex: Lancha Rápida"
-            />
+            <Label className="text-muted-foreground">Nome do Barco</Label>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-muted/40 border border-border">
+              <span className="text-sm text-foreground truncate">{profile.boat_name || '—'}</span>
+              <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="boat_capacity">Capacidade de Passageiros</Label>
-            <Input
-              id="boat_capacity"
-              type="number"
-              value={profile.boat_capacity || 8}
-              onChange={(e) => setProfile({ ...profile, boat_capacity: parseInt(e.target.value) || 8 })}
-              min={1}
-              max={20}
-            />
+            <Label className="text-muted-foreground">Capacidade de Passageiros</Label>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-muted/40 border border-border">
+              <span className="text-sm text-foreground">{profile.boat_capacity ?? '—'}</span>
+              <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="license">Número da Habilitação Náutica</Label>
-            <Input
-              id="license"
-              value={profile.license_number || ''}
-              onChange={(e) => setProfile({ ...profile, license_number: e.target.value })}
-              placeholder="ARRAIS-AMADOR-XXXXX"
-            />
+            <Label className="text-muted-foreground">Número da Habilitação Náutica (ARRAIS)</Label>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-md bg-muted/40 border border-border">
+              <span className="text-sm text-foreground truncate">{profile.license_number || '—'}</span>
+              <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </div>
           </div>
         </div>
 

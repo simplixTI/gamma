@@ -53,6 +53,8 @@ interface AuthContextType {
       cpf: string;
       boatType?: string;
       boatIdentification?: string;
+      boatCapacity?: number;
+      licenseNumber?: string;
       pilotType?: 'pilot' | 'partner_boat';
     }
   ) => Promise<any>;
