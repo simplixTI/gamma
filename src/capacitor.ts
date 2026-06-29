@@ -50,10 +50,12 @@ export async function initMobilePlugins() {
     const { App: CapApp } = await import('@capacitor/app');
     CapApp.addListener('appStateChange', async ({ isActive }) => {
       if (!isActive) return;
+      // Notifica hooks/componentes interessados (useConnectionStatus, telas de
+      // corrida ativa) para refazerem fetch e esconderem a tarja "Reconectando".
+      // Disparo sincrono ANTES do connect() para que a UI otimista esconda o banner.
+      try { window.dispatchEvent(new CustomEvent('app-resume')); } catch { /* ignore */ }
       try {
         const { supabase } = await import('@/integrations/supabase/client');
-        // Reconnect all channels that were open before backgrounding.
-        // supabase-js exposes this via the internal realtime client.
         await supabase.realtime.connect();
       } catch (err) {
         console.warn('[Capacitor] Supabase realtime reconnect failed:', err);

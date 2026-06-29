@@ -3,19 +3,28 @@ import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { cn } from '@/lib/utils';
 
+// Grace period antes de mostrar a tarja vermelha. WebSocket sempre cai quando
+// o app vai pro background no Android (ex: abrir o app do banco para fazer PIX).
+// A reconexao tipicamente acontece em <3s ao voltar. Sem grace period o passageiro
+// ve uma tarja "Reconectando" assustadora e acha que o pedido caiu.
+const DISCONNECT_GRACE_MS = 6000;
+
 const ConnectionStatusBanner = () => {
   const { isOnline, isRealtimeConnected, isFullyConnected, reconnect } = useConnectionStatus();
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [wasDisconnected, setWasDisconnected] = useState(false);
 
-  // Show banner when disconnected, hide after reconnection with delay
   useEffect(() => {
     if (!isFullyConnected) {
-      setShowBanner(true);
-      setWasDisconnected(true);
+      // Reconexao curta nao mostra nada. Se persistir alem do grace, mostra.
+      const t = setTimeout(() => {
+        setShowBanner(true);
+        setWasDisconnected(true);
+      }, DISCONNECT_GRACE_MS);
+      return () => clearTimeout(t);
     } else if (wasDisconnected) {
-      // Show "reconnected" message briefly
+      // "Conexao restabelecida" verde por 2s, so se a tarja vermelha chegou a aparecer
       const timeout = setTimeout(() => {
         setShowBanner(false);
         setWasDisconnected(false);

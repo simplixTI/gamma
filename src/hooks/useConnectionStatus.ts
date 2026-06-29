@@ -74,6 +74,37 @@ export const useConnectionStatus = () => {
     }
   }, [status.isOnline, status.isRealtimeConnected, reconnect]);
 
+  // Reconexao proativa quando o app volta do background:
+  // - document.visibilitychange (PWA/web)
+  // - window.pageshow (iOS Safari bfcache restore)
+  // - CustomEvent 'app-resume' (Capacitor nativo, ver src/capacitor.ts)
+  // WebSocket sempre cai em background no Android — reconectar imediato
+  // evita que o passageiro fique 30s sem updates ao voltar do app do banco.
+  useEffect(() => {
+    const handleResume = () => {
+      if (!navigator.onLine) return;
+      // Otimismo: assume conectado durante reconnect — evita flash do banner
+      setStatus(prev => ({ ...prev, isRealtimeConnected: true }));
+      try { supabase.realtime.connect(); } catch { /* ignore */ }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleResume();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', handleResume);
+    window.addEventListener('app-resume', handleResume);
+    window.addEventListener('focus', handleResume);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', handleResume);
+      window.removeEventListener('app-resume', handleResume);
+      window.removeEventListener('focus', handleResume);
+    };
+  }, []);
+
   return {
     ...status,
     isFullyConnected: status.isOnline && status.isRealtimeConnected,
