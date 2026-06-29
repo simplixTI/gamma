@@ -22,6 +22,7 @@ import { DbRide, Ride } from '@/types';
 import { toast } from 'sonner';
 import { usePilotGPS } from '@/hooks/usePilotGPS';
 import { useNotificationSound } from '@/hooks/useNotificationSound';
+import PoolMidRideNotice from '@/components/PoolMidRideNotice';
 
 type RidePhase = 'going_to_passenger' | 'waiting' | 'in_progress' | 'completed';
 
@@ -55,7 +56,7 @@ const ActiveRide = () => {
   const [currentPilotId, setCurrentPilotId] = useState<string | undefined>(undefined);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'paid' | 'failed'>('pending');
   const [passengerPhone, setPassengerPhone] = useState<string | null>(null);
-  const { user } = useAuthContext();
+  const { user, pilotProfile } = useAuthContext();
   const { playSound } = useNotificationSound();
 
   const handleNewMessage = useCallback(() => {
@@ -608,6 +609,19 @@ const ActiveRide = () => {
         onClose={() => setIsChatOpen(false)}
         onNewMessage={handleNewMessage}
       />
+
+      {/* Pool mid-ride: piloto pode aceitar passageiro ao longo da rota */}
+      {phase === 'in_progress' && pilotProfileId && currentPilotId && (
+        <PoolMidRideNotice
+          pilotProfileId={pilotProfileId}
+          pilotUserId={currentPilotId}
+          pilotName={pilotProfile?.full_name ?? 'Piloto'}
+          pilotPhone={pilotProfile?.phone ?? ''}
+          availableSeats={Math.max(0, (pilotProfile?.boat_capacity ?? 16) - (pilotProfile?.current_passengers ?? 0))}
+          pilotLat={null}
+          pilotLng={null}
+        />
+      )}
     </div>
   );
 };

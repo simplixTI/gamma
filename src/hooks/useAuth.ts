@@ -221,6 +221,7 @@ export function useAuth() {
       cpf: string;
       boatType?: string;
       boatIdentification?: string;
+      pilotType?: 'pilot' | 'partner_boat';
     }
   ) => {
     const appUrl = (import.meta.env.VITE_APP_URL as string | undefined) ?? window.location.origin;
@@ -284,6 +285,7 @@ export function useAuth() {
             cpf: profileData.cpf,
             boat_type: profileData.boatType,
             boat_identification: profileData.boatIdentification,
+            pilot_type: profileData.pilotType ?? 'pilot',
           });
 
         if (profileError) {

@@ -53,6 +53,7 @@ interface AuthContextType {
       cpf: string;
       boatType?: string;
       boatIdentification?: string;
+      pilotType?: 'pilot' | 'partner_boat';
     }
   ) => Promise<any>;
   signInWithEmail: (email: string, password: string) => Promise<any>;

@@ -75,6 +75,9 @@ const PilotAuth = () => {
   const [password, setPassword] = useState('');
   const [boatType, setBoatType] = useState('');
   const [boatIdentification, setBoatIdentification] = useState('');
+  // Default: novos cadastros entram como partner_boat. Admin reclassifica para 'pilot'
+  // (funcionario Gamma) quando aplicavel via /admin/users.
+  const [pilotType] = useState<'pilot' | 'partner_boat'>('partner_boat');
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,6 +167,7 @@ const PilotAuth = () => {
         cpf: cpf.replace(/\D/g, ''),
         boatType,
         boatIdentification,
+        pilotType,
       });
 
       // Upload boat photos after account creation
@@ -576,6 +580,16 @@ const PilotAuth = () => {
                   </h3>
 
                   <div className="space-y-4">
+                    {/* Nota: pilot_type sera definido pela equipe Gamma na aprovacao do cadastro */}
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        <strong className="text-foreground">Como funciona:</strong> apos sua analise, a Gamma define se voce sera
+                        <strong className="text-foreground"> Barco Parceiro</strong> (frota propria, split 60/40) ou
+                        <strong className="text-foreground"> Piloto Gamma</strong> (funcionario, split 45/45/10).
+                        Por padrao, cadastros entram como Barco Parceiro.
+                      </p>
+                    </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="boatType">Tipo de Barco</Label>
                       <div className="relative">

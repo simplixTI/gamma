@@ -13,6 +13,8 @@ import ActiveRideCard from '@/components/ActiveRideCard';
 import SimplixFooter from '@/components/SimplixFooter';
 import Logo from '@/components/Logo';
 import AdDisplay from '@/components/AdDisplay';
+import NearestDeckCard from '@/components/NearestDeckCard';
+import NearbyBoatsCard from '@/components/NearbyBoatsCard';
 
 const PassengerHome = () => {
   const navigate = useNavigate();
@@ -235,6 +237,17 @@ const PassengerHome = () => {
             </button>
           );
         })()}
+
+        {/* Localização atual + deck mais próximo */}
+        <NearestDeckCard
+          onUseAsOrigin={(deck) => {
+            setOrigin(deck);
+            navigate('/passenger/request');
+          }}
+        />
+
+        {/* Barcos online agora */}
+        <NearbyBoatsCard />
 
         {/* Pontos populares */}
         <section>

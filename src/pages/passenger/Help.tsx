@@ -1,13 +1,49 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, Mail, ShieldAlert, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
+
+const FAQS = [
+  {
+    q: 'Como funciona a corrida na Gamma?',
+    a: 'Voce escolhe o deck de embarque, o destino e confirma o pagamento. Um piloto disponivel aceita a corrida e te leva ate o destino. Voce acompanha tudo em tempo real no app.',
+  },
+  {
+    q: 'Quais sao as formas de pagamento?',
+    a: 'Aceitamos PIX, cartao de credito e saldo da Gamma Cash (carteira do app). O valor da corrida e debitado automaticamente apos a confirmacao.',
+  },
+  {
+    q: 'Como solicito um reembolso?',
+    a: 'Reembolsos sao avaliados caso a caso. Se a corrida foi cancelada por erro do piloto ou problema tecnico, abra um chamado neste suporte e nossa equipe analisa em ate 48h uteis. Pagamentos por PIX podem demorar ate 7 dias para retornar.',
+  },
+  {
+    q: 'O que acontece se eu cancelar?',
+    a: 'Cancelamentos antes da chegada do piloto sao gratuitos. Se o piloto ja esta a caminho, uma taxa de cancelamento pode ser aplicada para cobrir o deslocamento.',
+  },
+  {
+    q: 'A Gamma se responsabiliza por objetos esquecidos no barco?',
+    a: 'Nao. A Gamma e o piloto NAO se responsabilizam por itens deixados ou esquecidos a bordo. Caso lembre algo, entre em contato imediatamente com o suporte e tentaremos localizar o piloto, mas nao garantimos a recuperacao.',
+  },
+  {
+    q: 'Posso solicitar para mais de uma pessoa?',
+    a: 'Sim. Indique no app o numero de passageiros na hora de pedir a corrida. A capacidade depende do barco do piloto disponivel.',
+  },
+  {
+    q: 'Como funciona a politica de privacidade?',
+    a: 'Tratamos seus dados conforme a LGPD. Coletamos apenas o necessario para operar o servico (nome, email, telefone, localizacao durante a corrida). Voce pode pedir exclusao da conta em Configuracoes > Excluir conta. Detalhes completos em /privacy.',
+  },
+  {
+    q: 'Como funciona a verificacao de pilotos?',
+    a: 'Todos os pilotos passam por verificacao de documentos (CNH, habilitacao nautica, registro do barco). Pilotos Gamma sao funcionarios; Barcos Parceiros sao donos independentes credenciados.',
+  },
+];
 
 const SUBJECTS = [
   'Problema com pagamento',
@@ -83,6 +119,57 @@ const Help = () => {
       </header>
 
       <div className="max-w-lg mx-auto px-5 py-6 space-y-6">
+        {/* FAQ */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <HelpCircle className="w-5 h-5 text-primary" />
+            <h2 className="text-base font-bold text-foreground">Perguntas frequentes</h2>
+          </div>
+          <Accordion type="single" collapsible className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border">
+            {FAQS.map((item, idx) => (
+              <AccordionItem key={idx} value={`faq-${idx}`} className="border-0 px-4">
+                <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline py-3.5 text-left">
+                  {item.q}
+                </AccordionTrigger>
+                <AccordionContent className="text-sm text-muted-foreground pb-3.5 leading-relaxed">
+                  {item.a}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </section>
+
+        {/* Contato direto + disclaimer */}
+        <section className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-primary uppercase tracking-widest">Contato</p>
+              <a
+                href="mailto:contato@gamma.app.br"
+                className="text-sm font-semibold text-foreground hover:underline break-all"
+              >
+                contato@gamma.app.br
+              </a>
+              <p className="text-xs text-muted-foreground mt-1">Atendimento em ate 48h uteis</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 pt-3 border-t border-primary/15">
+            <div className="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Importante</p>
+              <p className="text-xs text-foreground mt-0.5 leading-relaxed">
+                A Gamma e o piloto <strong>nao se responsabilizam por itens esquecidos a bordo</strong>.
+                Sempre confira seus pertences antes de desembarcar.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <div>
           <h2 className="text-base font-bold text-foreground mb-1">Fale conosco</h2>
           <p className="text-sm text-muted">Descreva o problema e retornaremos pelo e-mail da sua conta.</p>
