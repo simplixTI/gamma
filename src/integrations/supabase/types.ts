@@ -35,6 +35,59 @@ export type Database = {
         }
         Relationships: []
       }
+      ad_clicks: {
+        Row: {
+          ad_id: string
+          clicked_at: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          ad_id: string
+          clicked_at?: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          ad_id?: string
+          clicked_at?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_clicks_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "partner_ads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_login_attempts: {
+        Row: {
+          attempted_at: string
+          email: string
+          id: string
+          ip_hint: string | null
+          success: boolean
+        }
+        Insert: {
+          attempted_at?: string
+          email: string
+          id?: string
+          ip_hint?: string | null
+          success?: boolean
+        }
+        Update: {
+          attempted_at?: string
+          email?: string
+          id?: string
+          ip_hint?: string | null
+          success?: boolean
+        }
+        Relationships: []
+      }
       admin_users: {
         Row: {
           created_at: string
@@ -139,43 +192,61 @@ export type Database = {
       }
       partner_ads: {
         Row: {
+          advertiser_contact: string | null
+          advertiser_name: string | null
+          content_type: string
           created_at: string
           created_by: string | null
           description: string | null
+          duration_days: number | null
           ends_at: string | null
           id: string
           image_url: string | null
           is_active: boolean
           link_url: string | null
           position: string
+          price: number | null
+          sold_at: string | null
           starts_at: string | null
           title: string
           updated_at: string
         }
         Insert: {
+          advertiser_contact?: string | null
+          advertiser_name?: string | null
+          content_type?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
+          duration_days?: number | null
           ends_at?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
           link_url?: string | null
           position?: string
+          price?: number | null
+          sold_at?: string | null
           starts_at?: string | null
           title: string
           updated_at?: string
         }
         Update: {
+          advertiser_contact?: string | null
+          advertiser_name?: string | null
+          content_type?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
+          duration_days?: number | null
           ends_at?: string | null
           id?: string
           image_url?: string | null
           is_active?: boolean
           link_url?: string | null
           position?: string
+          price?: number | null
+          sold_at?: string | null
           starts_at?: string | null
           title?: string
           updated_at?: string
@@ -289,6 +360,7 @@ export type Database = {
           amount: number
           created_at: string
           id: string
+          mp_fee: number
           mp_payment_id: string | null
           paid_at: string | null
           passenger_device_id: string | null
@@ -312,6 +384,7 @@ export type Database = {
           amount?: number
           created_at?: string
           id?: string
+          mp_fee?: number
           mp_payment_id?: string | null
           paid_at?: string | null
           passenger_device_id?: string | null
@@ -335,6 +408,7 @@ export type Database = {
           amount?: number
           created_at?: string
           id?: string
+          mp_fee?: number
           mp_payment_id?: string | null
           paid_at?: string | null
           passenger_device_id?: string | null
@@ -442,11 +516,143 @@ export type Database = {
           },
         ]
       }
+      pilot_earnings: {
+        Row: {
+          commission_percent: number
+          created_at: string
+          gross_amount: number
+          id: string
+          net_amount: number | null
+          paid_at: string | null
+          payout_id: string | null
+          pilot_profile_id: string
+          pilot_user_id: string
+          ride_id: string
+          status: string
+          tip_amount: number
+        }
+        Insert: {
+          commission_percent?: number
+          created_at?: string
+          gross_amount: number
+          id?: string
+          net_amount?: number | null
+          paid_at?: string | null
+          payout_id?: string | null
+          pilot_profile_id: string
+          pilot_user_id: string
+          ride_id: string
+          status?: string
+          tip_amount?: number
+        }
+        Update: {
+          commission_percent?: number
+          created_at?: string
+          gross_amount?: number
+          id?: string
+          net_amount?: number | null
+          paid_at?: string | null
+          payout_id?: string | null
+          pilot_profile_id?: string
+          pilot_user_id?: string
+          ride_id?: string
+          status?: string
+          tip_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pilot_earnings_payout_id_fkey"
+            columns: ["payout_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_payouts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pilot_earnings_pilot_profile_id_fkey"
+            columns: ["pilot_profile_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pilot_earnings_pilot_profile_id_fkey"
+            columns: ["pilot_profile_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pilot_earnings_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: true
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pilot_payouts: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          method: string
+          notes: string | null
+          paid_at: string
+          pilot_profile_id: string
+          pilot_user_id: string
+          reference: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method: string
+          notes?: string | null
+          paid_at?: string
+          pilot_profile_id: string
+          pilot_user_id: string
+          reference?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          method?: string
+          notes?: string | null
+          paid_at?: string
+          pilot_profile_id?: string
+          pilot_user_id?: string
+          reference?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pilot_payouts_pilot_profile_id_fkey"
+            columns: ["pilot_profile_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pilot_payouts_pilot_profile_id_fkey"
+            columns: ["pilot_profile_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pilot_profiles: {
         Row: {
           approval_notes: string | null
           approval_status: string
+          bank_account: string | null
+          bank_agency: string | null
+          bank_name: string | null
           boat_capacity: number
+          boat_color: string | null
           boat_identification: string | null
           boat_photos: string[] | null
           boat_type: string | null
@@ -458,9 +664,12 @@ export type Database = {
           id: string
           is_active: boolean
           is_verified: boolean
+          payout_info_updated_at: string | null
           phone: string
           photo_url: string | null
+          pilot_type: string
           pix_key: string | null
+          pix_key_type: string | null
           rating: number
           reviewed_at: string | null
           reviewed_by: string | null
@@ -473,7 +682,11 @@ export type Database = {
         Insert: {
           approval_notes?: string | null
           approval_status?: string
+          bank_account?: string | null
+          bank_agency?: string | null
+          bank_name?: string | null
           boat_capacity?: number
+          boat_color?: string | null
           boat_identification?: string | null
           boat_photos?: string[] | null
           boat_type?: string | null
@@ -485,9 +698,12 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_verified?: boolean
+          payout_info_updated_at?: string | null
           phone: string
           photo_url?: string | null
+          pilot_type?: string
           pix_key?: string | null
+          pix_key_type?: string | null
           rating?: number
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -500,7 +716,11 @@ export type Database = {
         Update: {
           approval_notes?: string | null
           approval_status?: string
+          bank_account?: string | null
+          bank_agency?: string | null
+          bank_name?: string | null
           boat_capacity?: number
+          boat_color?: string | null
           boat_identification?: string | null
           boat_photos?: string[] | null
           boat_type?: string | null
@@ -512,9 +732,12 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_verified?: boolean
+          payout_info_updated_at?: string | null
           phone?: string
           photo_url?: string | null
+          pilot_type?: string
           pix_key?: string | null
+          pix_key_type?: string | null
           rating?: number
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -547,6 +770,27 @@ export type Database = {
           id?: string
           name?: string | null
           phone?: string | null
+        }
+        Relationships: []
+      }
+      platform_config: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          value?: string
         }
         Relationships: []
       }
@@ -659,6 +903,50 @@ export type Database = {
           },
         ]
       }
+      ride_emails_sent: {
+        Row: {
+          last_error: string | null
+          passenger_email: string | null
+          passenger_resend_id: string | null
+          passenger_sent_at: string | null
+          pilot_email: string | null
+          pilot_resend_id: string | null
+          pilot_sent_at: string | null
+          ride_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_error?: string | null
+          passenger_email?: string | null
+          passenger_resend_id?: string | null
+          passenger_sent_at?: string | null
+          pilot_email?: string | null
+          pilot_resend_id?: string | null
+          pilot_sent_at?: string | null
+          ride_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_error?: string | null
+          passenger_email?: string | null
+          passenger_resend_id?: string | null
+          passenger_sent_at?: string | null
+          pilot_email?: string | null
+          pilot_resend_id?: string | null
+          pilot_sent_at?: string | null
+          ride_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_emails_sent_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: true
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ride_messages: {
         Row: {
           created_at: string
@@ -738,6 +1026,7 @@ export type Database = {
       rides: {
         Row: {
           accepted_at: string | null
+          cancellation_fee: number | null
           cancelled_at: string | null
           completed_at: string | null
           created_at: string
@@ -746,7 +1035,9 @@ export type Database = {
           destination_lng: number | null
           destination_name: string | null
           destination_pier_id: string | null
+          discount_amount: number
           estimated_time: number | null
+          gross_price: number | null
           id: string
           origin_address: string | null
           origin_lat: number
@@ -760,6 +1051,7 @@ export type Database = {
           passenger_name: string | null
           passenger_phone: string | null
           passenger_user_id: string | null
+          payment_method: string | null
           payment_status: string | null
           pilot_id: string | null
           pilot_lat: number | null
@@ -770,13 +1062,17 @@ export type Database = {
           price: number
           rating: number | null
           rating_comment: string | null
+          referral_discount_id: string | null
           started_at: string | null
           status: string
           tip: number | null
           updated_at: string
+          voucher_discount_amount: number
+          voucher_id: string | null
         }
         Insert: {
           accepted_at?: string | null
+          cancellation_fee?: number | null
           cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
@@ -785,7 +1081,9 @@ export type Database = {
           destination_lng?: number | null
           destination_name?: string | null
           destination_pier_id?: string | null
+          discount_amount?: number
           estimated_time?: number | null
+          gross_price?: number | null
           id?: string
           origin_address?: string | null
           origin_lat: number
@@ -799,6 +1097,7 @@ export type Database = {
           passenger_name?: string | null
           passenger_phone?: string | null
           passenger_user_id?: string | null
+          payment_method?: string | null
           payment_status?: string | null
           pilot_id?: string | null
           pilot_lat?: number | null
@@ -809,13 +1108,17 @@ export type Database = {
           price?: number
           rating?: number | null
           rating_comment?: string | null
+          referral_discount_id?: string | null
           started_at?: string | null
           status?: string
           tip?: number | null
           updated_at?: string
+          voucher_discount_amount?: number
+          voucher_id?: string | null
         }
         Update: {
           accepted_at?: string | null
+          cancellation_fee?: number | null
           cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
@@ -824,7 +1127,9 @@ export type Database = {
           destination_lng?: number | null
           destination_name?: string | null
           destination_pier_id?: string | null
+          discount_amount?: number
           estimated_time?: number | null
+          gross_price?: number | null
           id?: string
           origin_address?: string | null
           origin_lat?: number
@@ -838,6 +1143,7 @@ export type Database = {
           passenger_name?: string | null
           passenger_phone?: string | null
           passenger_user_id?: string | null
+          payment_method?: string | null
           payment_status?: string | null
           pilot_id?: string | null
           pilot_lat?: number | null
@@ -848,12 +1154,23 @@ export type Database = {
           price?: number
           rating?: number | null
           rating_comment?: string | null
+          referral_discount_id?: string | null
           started_at?: string | null
           status?: string
           tip?: number | null
           updated_at?: string
+          voucher_discount_amount?: number
+          voucher_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rides_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "vouchers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       saved_cards: {
         Row: {
@@ -993,6 +1310,59 @@ export type Database = {
         }
         Relationships: []
       }
+      vouchers: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          is_used: boolean
+          partner_name: string | null
+          sponsor: string
+          used_at: string | null
+          used_by: string | null
+          used_on_ride_id: string | null
+          value: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_used?: boolean
+          partner_name?: string | null
+          sponsor: string
+          used_at?: string | null
+          used_by?: string | null
+          used_on_ride_id?: string | null
+          value: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_used?: boolean
+          partner_name?: string | null
+          sponsor?: string
+          used_at?: string | null
+          used_by?: string | null
+          used_on_ride_id?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vouchers_used_on_ride_id_fkey"
+            columns: ["used_on_ride_id"]
+            isOneToOne: false
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wallet_transactions: {
         Row: {
           amount: number
@@ -1075,6 +1445,7 @@ export type Database = {
         Row: {
           approval_status: string | null
           boat_capacity: number | null
+          boat_color: string | null
           boat_identification: string | null
           boat_photos: string[] | null
           boat_type: string | null
@@ -1092,6 +1463,7 @@ export type Database = {
         Insert: {
           approval_status?: string | null
           boat_capacity?: number | null
+          boat_color?: string | null
           boat_identification?: string | null
           boat_photos?: string[] | null
           boat_type?: string | null
@@ -1109,6 +1481,7 @@ export type Database = {
         Update: {
           approval_status?: string | null
           boat_capacity?: number | null
+          boat_color?: string | null
           boat_identification?: string | null
           boat_photos?: string[] | null
           boat_type?: string | null
@@ -1141,10 +1514,24 @@ export type Database = {
           success: boolean
         }[]
       }
+      admin_delete_user: { Args: { p_user_id: string }; Returns: Json }
       cancel_ride_by_pilot: {
         Args: { p_pilot_id: string; p_ride_id: string }
         Returns: Json
       }
+      check_admin_login_rate_limit: {
+        Args: { p_email: string }
+        Returns: boolean
+      }
+      cleanup_old_login_attempts: { Args: never; Returns: undefined }
+      cleanup_stuck_payments: {
+        Args: never
+        Returns: {
+          payments_cleaned: number
+          rides_cancelled: number
+        }[]
+      }
+      complete_stuck_wallet_topup: { Args: { p_tx_id: string }; Returns: Json }
       credit_wallet: {
         Args: {
           p_amount: number
@@ -1163,6 +1550,7 @@ export type Database = {
         }
         Returns: number
       }
+      expire_abandoned_pending_rides: { Args: never; Returns: number }
       get_ride_price: {
         Args: { p_dest_id: string; p_origin_id: string }
         Returns: number
@@ -1175,6 +1563,11 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      mark_stale_locations_offline: { Args: never; Returns: number }
+      normalize_stuck_payment: {
+        Args: { p_ride_id: string }
+        Returns: undefined
+      }
       pay_ride_with_wallet: {
         Args: {
           p_amount: number
@@ -1184,6 +1577,12 @@ export type Database = {
         }
         Returns: Json
       }
+      record_pilot_earning: { Args: { p_ride_id: string }; Returns: undefined }
+      redeem_voucher: {
+        Args: { p_code: string; p_user_id: string }
+        Returns: Json
+      }
+      refund_to_wallet: { Args: { p_ride_id: string }; Returns: Json }
       release_pool_ride: {
         Args: { p_pilot_user_id: string; p_ride_id: string }
         Returns: undefined
@@ -1196,6 +1595,10 @@ export type Database = {
       set_default_card: {
         Args: { p_card_id: string; p_user_id: string }
         Returns: undefined
+      }
+      tip_ride_with_wallet: {
+        Args: { p_amount: number; p_ride_id: string; p_user_id: string }
+        Returns: Json
       }
     }
     Enums: {

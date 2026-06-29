@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Star, Phone, User } from 'lucide-react';
+import { CheckCircle, Star, Phone, User, Ship } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { getBoatColor } from '@/utils/boatColors';
 
 interface RideAcceptedModalProps {
   isOpen: boolean;
@@ -10,6 +11,9 @@ interface RideAcceptedModalProps {
   pilotName: string;
   pilotRating?: number;
   pilotPhone?: string;
+  pilotPhoto?: string;
+  boatName?: string;
+  boatColor?: string;
 }
 
 const RideAcceptedModal = ({
@@ -18,7 +22,11 @@ const RideAcceptedModal = ({
   pilotName,
   pilotRating = 4.9,
   pilotPhone,
+  pilotPhoto,
+  boatName,
+  boatColor,
 }: RideAcceptedModalProps) => {
+  const boatColorOption = getBoatColor(boatColor);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
@@ -71,22 +79,53 @@ const RideAcceptedModal = ({
           {/* Pilot info card */}
           <div className="bg-muted/30 rounded-xl p-4 mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-secondary/20 flex items-center justify-center">
+              {pilotPhoto ? (
+                <img
+                  src={pilotPhoto}
+                  alt={pilotName}
+                  className="w-14 h-14 rounded-full object-cover border-2 border-secondary/30"
+                  onError={(e) => {
+                    const el = e.target as HTMLImageElement;
+                    el.style.display = 'none';
+                    el.nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div
+                className={`w-14 h-14 rounded-full bg-secondary/20 items-center justify-center ${pilotPhoto ? 'hidden' : 'flex'}`}
+              >
                 <User className="w-7 h-7 text-secondary" />
               </div>
-              <div className="flex-1 text-left">
-                <p className="font-bold text-foreground text-lg">{pilotName}</p>
+              <div className="flex-1 text-left min-w-0">
+                <p className="font-bold text-foreground text-lg truncate">{pilotName}</p>
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 text-warning fill-warning" />
                   <span className="text-sm text-muted">{pilotRating.toFixed(1)}</span>
                 </div>
+                {boatName && (
+                  <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
+                    <Ship className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{boatName}</span>
+                    {boatColorOption && (
+                      <span className="flex items-center gap-1 shrink-0">
+                        <span className="text-muted-foreground/60">·</span>
+                        <span
+                          className="w-2.5 h-2.5 rounded-full border border-border"
+                          style={{ backgroundColor: boatColorOption.hex }}
+                          aria-label={`Cor ${boatColorOption.label}`}
+                        />
+                        <span>{boatColorOption.label}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               {pilotPhone && (
                 <Button
                   variant="secondary"
                   size="icon"
                   onClick={() => window.location.href = `tel:${pilotPhone}`}
-                  className="rounded-full"
+                  className="rounded-full shrink-0"
                 >
                   <Phone className="w-4 h-4" />
                 </Button>

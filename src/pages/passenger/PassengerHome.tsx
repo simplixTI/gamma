@@ -50,20 +50,20 @@ const PassengerHome = () => {
             : [0, 0],
         });
         if (ride.pilot_id) {
-          let pilotRating = 4.9;
           const { data: pp } = await supabase
             .from('pilot_profiles')
-            .select('rating')
+            .select('rating, photo_url, boat_type, boat_identification, boat_color')
             .eq('id', ride.pilot_id)
             .maybeSingle();
-          if (pp?.rating) pilotRating = pp.rating;
 
           setCurrentPilot({
             id: ride.pilot_id,
             name: ride.pilot_name || 'Piloto',
-            photo: '',
-            rating: pilotRating,
-            boat: 'Lancha Rápida',
+            photo: pp?.photo_url || '',
+            rating: pp?.rating || 4.9,
+            boat: pp?.boat_identification || pp?.boat_type || 'Barco',
+            boatType: pp?.boat_type ?? undefined,
+            boatColor: pp?.boat_color ?? undefined,
             phone: ride.pilot_phone || '',
           });
         }

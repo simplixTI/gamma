@@ -47,6 +47,7 @@ const RequestRide = () => {
   const [activeRidePrice, setActiveRidePrice] = useState<number | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [payingWithWallet, setPayingWithWallet] = useState(false);
+  const [skipDiscount, setSkipDiscount] = useState(false);
 
   // Load passenger wallet balance to offer "Pay with balance" option
   useEffect(() => {
@@ -255,8 +256,9 @@ const RequestRide = () => {
   const canConfirm = origin && destination;
   const pricePerPerson = calculatePrice();
   const baseTotal = pricePerPerson * passengerCount;
+  const effectiveHasDiscount = hasDiscount && !skipDiscount;
   // Apply referral discount (30% off) if available
-  const discountMultiplier = hasDiscount && activeDiscount
+  const discountMultiplier = effectiveHasDiscount && activeDiscount
     ? 1 - Math.max(0, Math.min(100, activeDiscount.discount_percent)) / 100
     : 1;
   const referralDiscountAmount = baseTotal - Math.ceil(baseTotal * discountMultiplier);
@@ -305,7 +307,7 @@ const RequestRide = () => {
       ? {
           gross_price: baseTotal,
           discount_amount: totalDiscount,
-          referral_discount_id: (hasDiscount && activeDiscount && referralDiscountAmount > 0) ? activeDiscount.id : null,
+          referral_discount_id: (effectiveHasDiscount && activeDiscount && referralDiscountAmount > 0) ? activeDiscount.id : null,
         }
       : {
           gross_price: null,
@@ -401,7 +403,7 @@ const RequestRide = () => {
     // Client-side update is intentionally omitted to prevent premature/incorrect status.
 
     // Consume the referral discount if it was applied
-    if (hasDiscount && activeDiscount && referralDiscountAmount > 0) {
+    if (effectiveHasDiscount && activeDiscount && referralDiscountAmount > 0) {
       try {
         await useDiscount(activeDiscount.id, currentRideId);
       } catch (err) {
@@ -650,7 +652,23 @@ const RequestRide = () => {
                   <div className="flex items-center gap-1 mt-0.5">
                     <Tag className="w-3 h-3 text-success" />
                     <span className="text-xs text-success font-semibold">Cupom aplicado</span>
+                    <button
+                      type="button"
+                      onClick={() => setSkipDiscount(true)}
+                      className="text-xs text-muted-foreground underline ml-1"
+                    >
+                      remover
+                    </button>
                   </div>
+                )}
+                {hasDiscount && skipDiscount && (
+                  <button
+                    type="button"
+                    onClick={() => setSkipDiscount(false)}
+                    className="text-xs text-primary underline mt-0.5"
+                  >
+                    Usar cupom de R${activeDiscount?.discount_percent}%
+                  </button>
                 )}
               </div>
               <div className="text-right">

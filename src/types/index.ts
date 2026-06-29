@@ -20,7 +20,12 @@ export interface Pilot {
   name: string;
   photo: string;
   rating: number;
+  /** Boat display name — `boat_identification` when available, falls back to `boat_type`. */
   boat: string;
+  /** Free-form boat type (e.g. "Lancha", "Bote") when present alongside the boat name. */
+  boatType?: string;
+  /** Boat color value from BOAT_COLORS palette (see src/utils/boatColors.ts). */
+  boatColor?: string;
   phone: string;
 }
 

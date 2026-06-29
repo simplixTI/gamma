@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePilotStats } from '@/hooks/usePilotStats';
 import SimplixFooter from '@/components/SimplixFooter';
+import { BOAT_COLORS, getBoatColor } from '@/utils/boatColors';
 
 interface PilotProfile {
   id: string;
@@ -18,6 +19,7 @@ interface PilotProfile {
   photo_url: string;
   boat_name: string;
   boat_capacity: number;
+  boat_color: string;
   license_number: string;
   pix_key: string;
   pix_key_type: string;
@@ -48,6 +50,7 @@ const PilotProfileEdit = () => {
     phone: '',
     boat_name: '',
     boat_capacity: 8,
+    boat_color: '',
     license_number: '',
     pix_key: '',
     pix_key_type: '',
@@ -136,6 +139,7 @@ const PilotProfileEdit = () => {
         photo_url: data.photo_url ?? '',
         boat_name: data.boat_identification ?? '',
         boat_capacity: data.boat_capacity ?? 8,
+        boat_color: data.boat_color ?? '',
         license_number: data.license_number ?? '',
         pix_key: data.pix_key ?? '',
         pix_key_type: data.pix_key_type ?? '',
@@ -175,6 +179,7 @@ const PilotProfileEdit = () => {
         photo_url: profile.photo_url || null,
         boat_identification: profile.boat_name || null,
         boat_capacity: profile.boat_capacity,
+        boat_color: profile.boat_color || null,
         pix_key: profile.pix_key || null,
         pix_key_type: profile.pix_key_type || null,
         bank_name: profile.bank_name || null,
@@ -344,6 +349,44 @@ const PilotProfileEdit = () => {
               <span className="text-sm text-foreground">{profile.boat_capacity ?? '—'}</span>
               <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="boat_color">Cor do Barco</Label>
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              Ajuda o passageiro a reconhecer seu barco no pier.
+            </p>
+            <Select
+              value={profile.boat_color || ''}
+              onValueChange={(v) => setProfile({ ...profile, boat_color: v })}
+            >
+              <SelectTrigger id="boat_color">
+                <SelectValue placeholder="Selecione uma cor">
+                  {profile.boat_color && (
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded-full border border-border"
+                        style={{ backgroundColor: getBoatColor(profile.boat_color)?.hex ?? '#ccc' }}
+                      />
+                      {getBoatColor(profile.boat_color)?.label ?? profile.boat_color}
+                    </span>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {BOAT_COLORS.map(({ value, label, hex }) => (
+                  <SelectItem key={value} value={value}>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="w-4 h-4 rounded-full border border-border"
+                        style={{ backgroundColor: hex }}
+                      />
+                      {label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

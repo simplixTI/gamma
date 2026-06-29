@@ -40,7 +40,7 @@ const Tracking = () => {
     setRideStatus
   } = useApp();
   
-  const [localPilotData, setLocalPilotData] = useState<{ id: string; name: string; photo: string; rating: number; boat: string; phone: string } | null>(null);
+  const [localPilotData, setLocalPilotData] = useState<{ id: string; name: string; photo: string; rating: number; boat: string; boatType?: string; boatColor?: string; phone: string } | null>(null);
   const [pilotPosition, setPilotPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [currentRide, setCurrentRide] = useState<DbRide | null>(null);
   const [proximityNotifications, setProximityNotifications] = useState({
@@ -311,8 +311,8 @@ const Tracking = () => {
 
     supabase
       .from('pilot_profiles')
-      .select('id, full_name, phone, photo_url, rating, boat_type, boat_identification')
-      .eq('user_id', currentRide.pilot_id)
+      .select('id, full_name, phone, photo_url, rating, boat_type, boat_identification, boat_color')
+      .eq('id', currentRide.pilot_id)
       .single()
       .then(({ data }) => {
         if (mounted && data) {
@@ -321,7 +321,9 @@ const Tracking = () => {
             name: data.full_name || 'Piloto',
             photo: data.photo_url || '',
             rating: data.rating || 4.9,
-            boat: data.boat_type || 'Barco',
+            boat: data.boat_identification || data.boat_type || 'Barco',
+            boatType: data.boat_type ?? undefined,
+            boatColor: data.boat_color ?? undefined,
             phone: data.phone || '',
           });
         }

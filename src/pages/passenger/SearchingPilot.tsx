@@ -36,7 +36,14 @@ const SearchingPilot = () => {
   const [searchTime, setSearchTime] = useState(0);
   const [currentRideId, setCurrentRideId] = useState<string | null>(null);
   const [showAcceptedModal, setShowAcceptedModal] = useState(false);
-  const [acceptedPilot, setAcceptedPilot] = useState<{ name: string; rating: number; phone: string } | null>(null);
+  const [acceptedPilot, setAcceptedPilot] = useState<{
+    name: string;
+    rating: number;
+    phone: string;
+    photo: string;
+    boatName: string;
+    boatColor?: string;
+  } | null>(null);
   const [showRetryModal, setShowRetryModal] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   // Ref (not state) prevents stale closure in both realtime + fallback callbacks
@@ -56,16 +63,20 @@ const SearchingPilot = () => {
             // Already matched, go to tracking (pilot_id = pilot_profiles.id row UUID)
             let pilotRating = 4.9;
             let pilotPhoto = '';
-            let pilotBoat = 'Barco';
+            let pilotBoatName = 'Barco';
+            let pilotBoatType: string | undefined;
+            let pilotBoatColor: string | undefined;
             if (ride.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
-                .select('rating, photo_url, boat_type')
+                .select('rating, photo_url, boat_type, boat_identification, boat_color')
                 .eq('id', ride.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
               if (pp?.photo_url) pilotPhoto = pp.photo_url;
-              if (pp?.boat_type) pilotBoat = pp.boat_type;
+              pilotBoatName = pp?.boat_identification || pp?.boat_type || 'Barco';
+              pilotBoatType = pp?.boat_type ?? undefined;
+              pilotBoatColor = pp?.boat_color ?? undefined;
             }
             if (navigatedToTrackingRef.current) return;
             navigatedToTrackingRef.current = true;
@@ -74,7 +85,9 @@ const SearchingPilot = () => {
               name: ride.pilot_name || 'Capitão',
               photo: pilotPhoto,
               rating: pilotRating,
-              boat: pilotBoat,
+              boat: pilotBoatName,
+              boatType: pilotBoatType,
+              boatColor: pilotBoatColor,
               phone: ride.pilot_phone || '',
             });
             setRideStatus('matched');
@@ -110,19 +123,23 @@ const SearchingPilot = () => {
             playSound();
             notifyRideAccepted(updatedRide.pilot_name || 'Capitão');
 
-            // Fetch real pilot rating, photo and boat_type from DB
+            // Fetch real pilot rating, photo, boat info from DB
             let pilotRating = 4.9;
             let pilotPhoto = '';
-            let pilotBoat = 'Barco';
+            let pilotBoatName = 'Barco';
+            let pilotBoatType: string | undefined;
+            let pilotBoatColor: string | undefined;
             if (updatedRide.pilot_id) {
               const { data: pp } = await supabase
                 .from('pilot_profiles')
-                .select('rating, photo_url, boat_type')
+                .select('rating, photo_url, boat_type, boat_identification, boat_color')
                 .eq('id', updatedRide.pilot_id)
                 .maybeSingle();
               if (pp?.rating) pilotRating = pp.rating;
               if (pp?.photo_url) pilotPhoto = pp.photo_url;
-              if (pp?.boat_type) pilotBoat = pp.boat_type;
+              pilotBoatName = pp?.boat_identification || pp?.boat_type || 'Barco';
+              pilotBoatType = pp?.boat_type ?? undefined;
+              pilotBoatColor = pp?.boat_color ?? undefined;
             }
 
             const pilot = {
@@ -130,12 +147,21 @@ const SearchingPilot = () => {
               name: updatedRide.pilot_name || 'Capitão',
               photo: pilotPhoto,
               rating: pilotRating,
-              boat: pilotBoat,
+              boat: pilotBoatName,
+              boatType: pilotBoatType,
+              boatColor: pilotBoatColor,
               phone: updatedRide.pilot_phone || '',
             };
 
             setCurrentPilot(pilot);
-            setAcceptedPilot({ name: pilot.name, rating: pilot.rating, phone: pilot.phone });
+            setAcceptedPilot({
+              name: pilot.name,
+              rating: pilot.rating,
+              phone: pilot.phone,
+              photo: pilot.photo,
+              boatName: pilot.boat,
+              boatColor: pilot.boatColor,
+            });
             setShowAcceptedModal(true);
             setRideStatus('matched');
 
@@ -265,6 +291,9 @@ const SearchingPilot = () => {
         pilotName={acceptedPilot?.name || 'Capitão'}
         pilotRating={acceptedPilot?.rating}
         pilotPhone={acceptedPilot?.phone}
+        pilotPhoto={acceptedPilot?.photo}
+        boatName={acceptedPilot?.boatName}
+        boatColor={acceptedPilot?.boatColor}
       />
 
       {/* Map Background */}

@@ -3,6 +3,7 @@ import { Star, Phone, MessageCircle, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Pilot } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { getBoatColor } from '@/utils/boatColors';
 
 interface PilotCardProps {
   pilot: Pilot;
@@ -43,6 +44,7 @@ const PilotCard: React.FC<PilotCardProps> = ({
   }, [pilot.id]);
 
   const displayRating = averageRating ?? pilot.rating;
+  const boatColorOption = getBoatColor(pilot.boatColor);
 
   return (
     <div className="bg-card rounded-2xl border border-border overflow-hidden" style={{ boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
@@ -84,7 +86,21 @@ const PilotCard: React.FC<PilotCardProps> = ({
         {/* Name + boat + rating */}
         <div className="flex-1 min-w-0">
           <p className="font-bold text-foreground text-base leading-tight truncate">{pilot.name}</p>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{pilot.boat}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {boatColorOption && (
+              <span
+                className="w-2.5 h-2.5 rounded-full border border-border shrink-0"
+                style={{ backgroundColor: boatColorOption.hex }}
+                aria-label={`Cor ${boatColorOption.label}`}
+              />
+            )}
+            <p className="text-xs text-muted-foreground truncate">
+              {pilot.boat}
+              {pilot.boatType && pilot.boatType !== pilot.boat && (
+                <span className="text-muted-foreground/70"> · {pilot.boatType}</span>
+              )}
+            </p>
+          </div>
           <div className="flex items-center gap-1 mt-1">
             <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
             <span className="text-xs font-bold text-foreground">{displayRating}</span>
