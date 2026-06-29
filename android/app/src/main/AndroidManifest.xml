@@ -22,15 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link: OAuth callback do Supabase (Google Sign-In)
-                 autoVerify=true habilita Android App Links — apos publicar
-                 .well-known/assetlinks.json em https://gamma.app.br,
-                 o sistema abre o app direto sem mostrar disambiguation dialog. -->
+            <!-- Android App Links: captura TODOS os paths de gamma.app.br.
+                 autoVerify=true + assetlinks.json publico em
+                 https://gamma.app.br/.well-known/assetlinks.json
+                 fazem o sistema abrir o app DIRETO, sem disambiguation dialog.
+                 Inclui /auth/callback (Supabase OAuth) e qualquer outra rota. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="gamma.app.br" android:pathPrefix="/auth/callback" />
+                <data android:scheme="https" android:host="gamma.app.br" />
             </intent-filter>
 
             <!-- Custom scheme fallback para deep links proprietarios -->

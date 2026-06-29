@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.gamma.boattaxi",
       "sha256_cert_fingerprints": [
-        "DC:4E:12:D0:E7:7D:5A:69:78:C6:3E:B1:53:22:A4:7B:FE:35:71:7A:80:18:DC:63:3E:FC:1B:70:A6:C4:71:16"
+        "DC:4E:12:D0:E7:7D:5A:69:78:C6:3E:B1:53:22:A4:7B:FE:35:71:7A:80:18:DC:63:3E:FC:1B:70:A6:C4:71:16",
+        "F2:8B:16:F3:E7:0F:A4:F8:D1:5F:39:73:93:79:B4:BA:18:BA:1F:47:B7:34:6F:26:21:F2:1A:B0:FD:9A:5C:08"
       ]
     }
   }
