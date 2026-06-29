@@ -33,9 +33,13 @@ playwright/.cache/
 *.sln
 *.sw?
 
-# Android secrets
+# Android secrets — NUNCA commitar keystore nem properties de assinatura
 android/key.properties
+android/keystore.properties
+android/**/keystore.properties
 android/app/google-services.json
+*.keystore
+*.jks
 
 # Capacitor native projects
 ios/
