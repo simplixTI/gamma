@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Clock, ChevronRight, Gift, History, MapPin, Zap } from 'lucide-react';
+import { Search, Clock, ChevronRight, History, MapPin, Zap } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useReferral } from '@/hooks/useReferral';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { getCurrentRide } from '@/services/rideService';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,7 +19,6 @@ const PassengerHome = () => {
   const navigate = useNavigate();
   const { setOrigin, setDestination, setCurrentPilot, setRideStatus } = useApp();
   const { user, passengerProfile } = useAuthContext();
-  const { hasDiscount, pendingDiscounts } = useReferral(user?.id);
   usePushNotifications(user?.id);
   const [activeRide, setActiveRide] = useState<DbRide | null>(null);
 
@@ -206,37 +204,6 @@ const PassengerHome = () => {
             />
           </section>
         )}
-
-        {/* Banner de desconto de indicação */}
-        {hasDiscount && (() => {
-          const nextExpiry = pendingDiscounts[0]?.expires_at;
-          const daysLeft = nextExpiry
-            ? Math.max(0, Math.ceil((new Date(nextExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-            : null;
-          return (
-            <button
-              onClick={() => navigate('/passenger/referral')}
-              className="w-full flex items-center gap-3 bg-success/8 border border-success/25 rounded-2xl px-4 py-3.5 text-left active:opacity-80 cursor-pointer"
-            >
-              <div className="w-10 h-10 bg-success/15 rounded-xl flex items-center justify-center shrink-0">
-                <Gift className="w-5 h-5 text-success" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground text-sm">
-                  {pendingDiscounts.length}x desconto de 30% disponível!
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {daysLeft !== null
-                    ? daysLeft === 0
-                      ? 'Expira hoje — use agora!'
-                      : `Válido por mais ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`
-                    : 'Aplicado automaticamente na próxima corrida'}
-                </p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </button>
-          );
-        })()}
 
         {/* Localização atual + deck mais próximo */}
         <NearestDeckCard
