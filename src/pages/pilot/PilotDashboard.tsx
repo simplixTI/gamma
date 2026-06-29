@@ -226,16 +226,9 @@ const PilotDashboard = () => {
     }
   }, [isPilotOnline, permission, requestPermission]);
 
-  // Go offline when component unmounts only if no active rides
-  // (prevents going offline while navigating to an active ride)
-  useEffect(() => {
-    return () => {
-      if (activeRidesRef.current.length === 0) {
-        setIsPilotOnline(false);
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Online status persists across navigation and PWA reopen.
+  // Only toggled off by explicit click on the Online/Offline button,
+  // or by SIGNED_OUT in AppContext.
 
   const drawerStats = useMemo(() => ({
     ridestoday: stats.totalRides,

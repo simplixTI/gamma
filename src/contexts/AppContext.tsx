@@ -78,17 +78,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
   };
 
-  // Clear ride state when user logs out or changes to prevent stale data
+  // Clear ride state when user logs out or changes to prevent stale data.
+  // Pilot online status is NOT reset on SIGNED_IN — must persist across
+  // token refresh, tab focus and PWA reopen. Only an explicit toggle on
+  // the dashboard button or SIGNED_OUT (logout) can take the pilot offline.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
+      if (event === 'SIGNED_OUT') {
         setRideStatus('idle');
         setOrigin(null);
         setDestination(null);
         setCurrentPilot(null);
         setPassengerCount(1);
         setIsPilotOnline(false);
-        // Also clear persisted ride locations
+        try {
+          localStorage.removeItem('gamma_ride_origin');
+          localStorage.removeItem('gamma_ride_destination');
+        } catch {}
+      } else if (event === 'SIGNED_IN') {
+        setRideStatus('idle');
+        setOrigin(null);
+        setDestination(null);
+        setCurrentPilot(null);
+        setPassengerCount(1);
         try {
           localStorage.removeItem('gamma_ride_origin');
           localStorage.removeItem('gamma_ride_destination');

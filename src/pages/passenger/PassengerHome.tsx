@@ -242,45 +242,51 @@ const PassengerHome = () => {
         <SimplixFooter />
       </div>
 
-      {/* ── Bottom tab bar ── */}
+      {/* ── Bottom tab bar ── floating ocean dock */}
       <nav
-        className="fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50"
+        className="fixed bottom-0 left-0 right-0 z-50"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex items-center">
-          {/* Início */}
-          <button className="flex-1 flex flex-col items-center py-3 gap-1 text-primary" onClick={() => navigate('/passenger')} aria-label="Início">
-            <div className="relative">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <div className="relative bg-gradient-to-b from-[#0b2a44] to-[#061a2c] rounded-t-3xl shadow-[0_-12px_32px_-8px_rgba(0,40,80,0.45)]">
+          <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/50 to-transparent" />
+
+          <div className="flex items-center px-2 pt-2">
+            {/* Início (active) */}
+            <button
+              className="group relative flex-1 flex flex-col items-center gap-1 py-2.5 active:scale-95 transition-transform"
+              onClick={() => navigate('/passenger')}
+              aria-label="Início"
+            >
+              <span className="absolute inset-x-4 inset-y-1 rounded-2xl bg-cyan-400/15 ring-1 ring-cyan-300/30 shadow-[0_0_24px_-4px_rgba(34,211,238,0.55)]" />
+              <svg className="relative w-5 h-5 text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.55)]" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
               </svg>
-            </div>
-            <span className="text-[10px] font-semibold">Início</span>
-            <span className="w-4 h-0.5 rounded-full bg-primary" />
-          </button>
+              <span className="relative text-[10px] font-semibold text-cyan-50 tracking-wide">Início</span>
+            </button>
 
-          {/* Atividade */}
-          <button
-            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors"
-            onClick={() => navigate('/passenger/history')}
-            aria-label="Atividade"
-          >
-            <History className="w-5 h-5" aria-hidden="true" />
-            <span className="text-[10px] font-medium">Atividade</span>
-          </button>
+            {/* Atividade */}
+            <button
+              className="flex-1 flex flex-col items-center gap-1 py-2.5 text-white/55 hover:text-white active:scale-95 transition-all"
+              onClick={() => navigate('/passenger/history')}
+              aria-label="Atividade"
+            >
+              <History className="w-5 h-5" aria-hidden="true" />
+              <span className="text-[10px] font-medium tracking-wide">Atividade</span>
+            </button>
 
-          {/* Conta */}
-          <button
-            className="flex-1 flex flex-col items-center py-3 gap-1 text-muted-foreground active:text-foreground transition-colors"
-            onClick={() => navigate('/passenger/profile')}
-            aria-label="Conta"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-            </svg>
-            <span className="text-[10px] font-medium">Conta</span>
-          </button>
+            {/* Conta */}
+            <button
+              className="flex-1 flex flex-col items-center gap-1 py-2.5 text-white/55 hover:text-white active:scale-95 transition-all"
+              onClick={() => navigate('/passenger/profile')}
+              aria-label="Conta"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
+              <span className="text-[10px] font-medium tracking-wide">Conta</span>
+            </button>
+          </div>
         </div>
       </nav>
     </div>
