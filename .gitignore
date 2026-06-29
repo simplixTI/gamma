@@ -41,9 +41,17 @@ android/app/google-services.json
 *.keystore
 *.jks
 
-# Capacitor native projects
+# Android build outputs e caches (gerados pelo Gradle, nao versionar)
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/.idea/
+android/**/.cxx/
+
+# Capacitor native projects — iOS continua ignorado (regenerado via cap add ios)
 ios/
-android/
 
 # Binaries
 *.dll

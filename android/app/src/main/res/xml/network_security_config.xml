@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Network Security Config — producao.
+     Bloqueia trafego cleartext em todo o app.
+     Permite somente HTTPS com Trust Anchors do sistema. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Dominios trusted explicitos.
+         cleartext=false garante que qualquer downgrade para HTTP eh recusado. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">gamma.app.br</domain>
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">gstatic.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
