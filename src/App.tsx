@@ -61,6 +61,7 @@ const PilotProfileEdit = lazy(() => import("./pages/pilot/PilotProfileEdit"));
 const Earnings = lazy(() => import("./pages/pilot/Earnings"));
 const PilotSettings = lazy(() => import("./pages/pilot/PilotSettings"));
 const PilotDocumentUpload = lazy(() => import("./pages/pilot/PilotDocumentUpload"));
+const PilotHelp = lazy(() => import("./pages/pilot/PilotHelp"));
 
 const queryClient = new QueryClient();
 
@@ -257,6 +258,11 @@ const App = () => (
                 <Route path="/pilot/settings" element={
                   <ProtectedRoute requiredRole="pilot">
                     <PilotSettings />
+                  </ProtectedRoute>
+                } />
+                <Route path="/pilot/help" element={
+                  <ProtectedRoute requiredRole="pilot">
+                    <PilotHelp />
                   </ProtectedRoute>
                 } />
                 <Route path="/pilot/documents" element={
