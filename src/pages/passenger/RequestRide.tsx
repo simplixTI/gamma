@@ -635,20 +635,14 @@ const RequestRide = () => {
               </div>
             </div>
 
-            {/* Price row */}
+            {/* Price row — simplificado: valor exato, com 1 risco se houver cupom */}
             <div className="flex items-center justify-between bg-background border border-border rounded-2xl px-4 py-2.5">
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Valor estimado</p>
-                {hasDiscount && activeDiscount && referralDiscountAmount > 0 && (
+                {(totalPrice < baseTotal) && (
                   <div className="flex items-center gap-1 mt-0.5">
                     <Tag className="w-3 h-3 text-success" />
-                    <span className="text-xs text-success font-semibold">{activeDiscount.discount_percent}% off indicação</span>
-                  </div>
-                )}
-                {isPromoRoute && (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Tag className="w-3 h-3 text-warning" />
-                    <span className="text-xs text-warning font-semibold">Preço promocional</span>
+                    <span className="text-xs text-success font-semibold">Cupom aplicado</span>
                   </div>
                 )}
               </div>
@@ -656,10 +650,7 @@ const RequestRide = () => {
                 {(totalPrice < baseTotal) && (
                   <p className="text-xs text-muted-foreground line-through">R${baseTotal.toFixed(0)}</p>
                 )}
-                {isPromoRoute && (
-                  <p className="text-xs text-muted-foreground line-through">R${(PROMO_ORIGINAL_PRICE * passengerCount).toFixed(0)}</p>
-                )}
-                <p className={`text-xl font-bold ${isPromoRoute ? 'text-warning' : (totalPrice < baseTotal) ? 'text-success' : 'text-foreground'}`}>
+                <p className={`text-xl font-bold ${(totalPrice < baseTotal) ? 'text-success' : 'text-foreground'}`}>
                   R${totalPrice.toFixed(0)}
                 </p>
                 {passengerCount > 1 && (
