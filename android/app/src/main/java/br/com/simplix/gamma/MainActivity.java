@@ -1,4 +1,4 @@
-package com.gamma.boattaxi;
+package br.com.simplix.gamma;
 
 import com.getcapacitor.BridgeActivity;
 

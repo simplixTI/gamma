@@ -12,7 +12,7 @@
 -keepclassmembers class * {
     @com.getcapacitor.PluginMethod public *;
 }
--keep class com.gamma.boattaxi.** { *; }
+-keep class br.com.simplix.gamma.** { *; }
 
 # --- Plugins Capacitor instalados ---
 -keep class com.capacitorjs.plugins.** { *; }

@@ -4,7 +4,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // Updates do site refletem automaticamente no app — so e necessario publicar uma
 // nova versao na Play Store quando ha mudancas nativas (plugins, permissoes, etc).
 const config: CapacitorConfig = {
-  appId: 'com.gamma.boattaxi',
+  appId: 'br.com.simplix.gamma',
   appName: 'Gamma',
   // webDir continua apontando para o build local — usado como fallback quando
   // o app eh aberto sem internet no primeiro launch ou em ambientes de teste

@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Gamma</string>
     <string name="title_activity_main">Gamma</string>
-    <string name="package_name">com.gamma.boattaxi</string>
-    <string name="custom_url_scheme">com.gamma.boattaxi</string>
+    <string name="package_name">br.com.simplix.gamma</string>
+    <string name="custom_url_scheme">br.com.simplix.gamma</string>
 </resources>
