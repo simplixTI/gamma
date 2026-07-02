@@ -118,7 +118,7 @@ const ActiveRideCard = ({ ride, userType, onCancelled }: ActiveRideCardProps) =>
         {/* Rota */}
         <div className="flex items-start gap-3 mb-4">
           <div className="flex flex-col items-center pt-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-success" />
+            <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
             <div className="w-0.5 h-6 bg-border my-1" />
             <div className="w-2.5 h-2.5 rounded-full bg-foreground" />
           </div>

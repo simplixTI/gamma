@@ -502,7 +502,7 @@ const ActiveRide = () => {
         {/* Route info */}
         <div className="bg-background rounded-xl p-4 mb-6">
           <div className="flex items-start gap-3 mb-3">
-            <div className="w-3 h-3 rounded-full bg-success mt-1" />
+            <div className="w-3 h-3 rounded-full bg-orange-500 mt-1" />
             <div>
               <p className="text-sm text-muted">Embarque</p>
               <p className="font-medium text-foreground">{ride.origin.name}</p>

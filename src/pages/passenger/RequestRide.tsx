@@ -477,7 +477,7 @@ const RequestRide = () => {
         <div className="bg-card rounded-xl shadow-lg p-4">
           {/* Origin */}
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-success shrink-0" />
+            <div className="w-3 h-3 rounded-full bg-orange-500 shrink-0" />
             <button
               onClick={() => {
                 setShowOriginPicker(true);

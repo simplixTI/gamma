@@ -344,26 +344,41 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           />
         )}
 
-        {/* Pier/Location markers */}
-        {locations.map((location) => (
-          <Marker
-            key={location.id}
-            position={{
-              lat: location.coordinates[1],
-              lng: location.coordinates[0],
-            }}
-            onClick={() => handleMarkerClick(location)}
-            icon={{
-              path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-              fillColor: selectedLocation?.id === location.id ? '#00A8E8' : '#10B981',
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 2,
-              scale: 1.3,
-              anchor: new google.maps.Point(12, 22),
-            }}
-          />
-        ))}
+        {/* Pier/Location markers — origem laranja, destino preto, resto verde */}
+        {locations.map((location) => {
+          const isOrigin = origin?.id === location.id;
+          const isDestination = destination?.id === location.id;
+          const isSelected = selectedLocation?.id === location.id;
+          const fillColor = isOrigin
+            ? '#F97316'                  // laranja pra embarque
+            : isDestination
+              ? '#111827'                // preto pra destino
+              : isSelected
+                ? '#00A8E8'              // cyan em selecao pontual
+                : '#10B981';             // verde padrao (deck disponivel)
+          const scale = isOrigin || isDestination ? 1.7 : 1.3;
+          const zIndex = isOrigin || isDestination ? 20 : 1;
+          return (
+            <Marker
+              key={location.id}
+              position={{
+                lat: location.coordinates[1],
+                lng: location.coordinates[0],
+              }}
+              onClick={() => handleMarkerClick(location)}
+              zIndex={zIndex}
+              icon={{
+                path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+                fillColor,
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: isOrigin || isDestination ? 3 : 2,
+                scale,
+                anchor: new google.maps.Point(12, 22),
+              }}
+            />
+          );
+        })}
 
         {/* Boat markers — real pilots from locations table, or fallback to hardcoded */}
         {showBoats && (pilotPositions ?? boatPositions.map((b) => ({ pilot_id: String(b.id), lat: b.lat, lng: b.lng, is_available: true }))).map((pilot) => (

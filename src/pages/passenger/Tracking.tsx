@@ -504,8 +504,8 @@ const Tracking = () => {
           {/* Embarque dot */}
           <div className="flex items-start gap-3">
             <div className="flex flex-col items-center pt-0.5">
-              <div className="w-7 h-7 rounded-full bg-success/15 flex items-center justify-center">
-                <div className="w-2.5 h-2.5 rounded-full bg-success" />
+              <div className="w-7 h-7 rounded-full bg-orange-500/15 flex items-center justify-center">
+                <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
               </div>
               <div className="w-0.5 h-8 bg-border mt-1" />
             </div>
