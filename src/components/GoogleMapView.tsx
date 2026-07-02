@@ -406,32 +406,23 @@ const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           />
         )}
 
-        {/* Rota pela água: embarque -> destino */}
-        {originToDestPath && (
+        {/* Rota pela água: embarque -> destino
+            Preview (antes da corrida): NAO renderiza — o roteamento por canais eh
+            aproximado e as retas entre waypoints acabavam cortando terra em alguns
+            trajetos. Durante 'tracking' (corrida ativa) mantemos a linha verde
+            porque a viagem ja esta acontecendo e o polyline sinaliza direcao geral.
+            O calculo de ETA/distancia via buildWaterRoute continua rodando no
+            useEffect e sendo emitido via onRouteInfo. */}
+        {originToDestPath && routePhase !== 'preview' && (
           <Polyline
             path={originToDestPath}
-            options={routePhase === 'preview'
-              ? {
-                  strokeColor: '#F5A623',
-                  strokeOpacity: 0,
-                  strokeWeight: 0,
-                  zIndex: 7,
-                  icons: [
-                    {
-                      icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#F5A623', strokeWeight: 3, scale: 6 },
-                      offset: '0',
-                      repeat: '16px',
-                    },
-                  ],
-                }
-              : {
-                  strokeColor: '#22C55E',
-                  strokeOpacity: 0.85,
-                  strokeWeight: 5,
-                  zIndex: 7,
-                  icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 3, strokeColor: '#ffffff', strokeWeight: 1 }, offset: '50%' }],
-                }
-            }
+            options={{
+              strokeColor: '#22C55E',
+              strokeOpacity: 0.85,
+              strokeWeight: 5,
+              zIndex: 7,
+              icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 3, strokeColor: '#ffffff', strokeWeight: 1 }, offset: '50%' }],
+            }}
           />
         )}
 
