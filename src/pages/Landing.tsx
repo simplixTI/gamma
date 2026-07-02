@@ -85,6 +85,7 @@ const Landing = () => {
               { label: 'Como funciona', id: 'como-funciona' },
               { label: 'Área de atendimento', id: 'area' },
               { label: 'Para pilotos', id: 'para-pilotos' },
+              { label: 'Delivery', id: 'delivery' },
             ].map(({ label, id }) => (
               <a
                 key={id}
@@ -168,7 +169,7 @@ const Landing = () => {
           className="fade-in-up font-light mt-6 max-w-xl mx-auto leading-relaxed"
           style={{ fontSize: '1.125rem', color: 'rgba(255,255,255,0.50)', animation: 'fadeInUp 0.7s ease-out 0.25s both' }}
         >
-          Pool de barcos nos principais trapiches. Rápido, seguro e verificado.
+          Pool de barcos nos principais decks. Rápido, seguro e verificado.
         </p>
 
         {/* Botões */}
@@ -219,7 +220,7 @@ const Landing = () => {
           className="fade-in-up mt-8 tracking-wide uppercase"
           style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', animation: 'fadeInUp 0.7s ease-out 0.55s both' }}
         >
-          24 trapiches &middot; Ilha da Gigoia &middot; Barra da Tijuca, RJ
+          24 decks fixos &middot; Ilha da Gigoia &middot; Barra da Tijuca, RJ
         </p>
       </section>
 
@@ -261,13 +262,13 @@ const Landing = () => {
             {[
               {
                 num: '01',
-                title: 'Escolha o trapiche mais próximo',
+                title: 'Escolha o deck mais próximo',
                 body: 'Selecione o ponto de embarque na Ilha da Gigoia.',
               },
               {
                 num: '02',
                 title: 'Piloto confirmado navega até você',
-                body: 'Um piloto verificado aceita e chega ao seu trapiche.',
+                body: 'Um piloto verificado aceita e chega ao seu deck.',
               },
               {
                 num: '03',
@@ -322,7 +323,7 @@ const Landing = () => {
         <div className="max-w-5xl mx-auto">
           <div className="grid grid-cols-2 sm:grid-cols-4">
             {[
-              { value: '24', label: 'trapiches ativos' },
+              { value: '24', label: 'decks fixos' },
               { value: 'Pool', label: 'compartilhado' },
               { value: 'PIX', label: 'ou cartão' },
               { value: 'RJ', label: 'Barra da Tijuca' },
@@ -388,7 +389,7 @@ const Landing = () => {
               className="font-light leading-relaxed mb-8"
               style={{ fontSize: '0.9375rem', color: 'rgba(255,255,255,0.50)' }}
             >
-              Seja seu próprio chefe. Aceite corridas nos principais trapiches
+              Seja seu próprio chefe. Aceite corridas nos principais decks
               da Ilha e receba diretamente no seu app.
             </p>
             <button
@@ -431,7 +432,7 @@ const Landing = () => {
               },
               {
                 title: 'Área de cobertura definida',
-                sub: 'Atue nos trapiches que você conhece.',
+                sub: 'Atue nos decks que você conhece.',
               },
             ].map(({ title, sub }, i, arr) => (
               <div
@@ -450,6 +451,91 @@ const Landing = () => {
                   style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.40)' }}
                 >
                   {sub}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───── GAMMA DELIVERY (EM BREVE) ───── */}
+      <section
+        id="delivery"
+        style={{
+          backgroundColor: '#050505',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '8rem 1.5rem',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Beam horizontal topo */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', left: '10%', right: '10%', top: '0', height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.28) 50%, transparent 100%)', pointerEvents: 'none', animation: 'linePulse 7s ease-in-out infinite alternate' }} />
+        {/* Beam vertical direita */}
+        <div aria-hidden="true" className="orb-anim" style={{ position: 'absolute', right: '8%', top: '20%', width: '1px', height: '200px', background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.35) 50%, transparent 100%)', pointerEvents: 'none', animation: 'beamRise 8s ease-in-out infinite alternate' }} />
+
+        <div className="max-w-4xl mx-auto text-center">
+          {/* Badge EM BREVE */}
+          <span
+            className="orb-anim inline-block"
+            style={{
+              fontSize: '10px',
+              letterSpacing: '0.28em',
+              color: '#22d3ee',
+              backgroundColor: 'rgba(34,211,238,0.06)',
+              border: '1px solid rgba(34,211,238,0.25)',
+              padding: '0.4rem 0.9rem',
+              borderRadius: '9999px',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              animation: 'borderGlow 3s ease-in-out infinite alternate',
+              marginBottom: '2rem',
+            }}
+          >
+            Em breve
+          </span>
+
+          {/* Título */}
+          <h2
+            className="font-semibold tracking-tight text-white"
+            style={{ fontSize: 'clamp(2.25rem,5vw,3.25rem)', lineHeight: 1.1, marginBottom: '1.25rem' }}
+          >
+            Gamma Delivery.
+          </h2>
+
+          {/* Pitch */}
+          <p
+            className="font-light leading-relaxed mx-auto"
+            style={{ fontSize: '1.0625rem', color: 'rgba(255,255,255,0.55)', maxWidth: '620px', marginBottom: '3.5rem' }}
+          >
+            Seu pedido do iFood, Rappi ou 99 entregue direto no deck da sua ilha —
+            dentro de uma case térmica, mantendo tudo no ponto certo até o embarque.
+          </p>
+
+          {/* 3-step */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto text-left">
+            {[
+              { step: '01', title: 'Pedido no app parceiro', body: 'iFood, Rappi ou 99, sem mudança no fluxo.' },
+              { step: '02', title: 'Entrega no deck fixo', body: 'Case térmica reservada e monitorada.' },
+              { step: '03', title: 'Retire no embarque', body: 'Chegou quentinho, pronto pra levar.' },
+            ].map(({ step, title, body }) => (
+              <div
+                key={step}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  backgroundColor: '#0e0e0e',
+                  borderRadius: '0.875rem',
+                  padding: '1.5rem',
+                }}
+              >
+                <p className="font-mono tracking-wider" style={{ fontSize: '10px', color: 'rgba(255,255,255,0.25)', marginBottom: '0.75rem' }}>
+                  {step}
+                </p>
+                <p className="font-medium text-white" style={{ fontSize: '0.9375rem', marginBottom: '0.375rem' }}>
+                  {title}
+                </p>
+                <p className="font-light leading-relaxed" style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.45)' }}>
+                  {body}
                 </p>
               </div>
             ))}
