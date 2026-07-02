@@ -3,23 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, TrendingUp, CreditCard, Wallet, CheckCircle, Users, Building2, Anchor, Megaphone, Ticket, Download, FileText, Ship } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Split constants — kept in sync with platform_config table
-// Gamma boats (pilot_type='pilot'):       pilot 45% / owners 45% / simplix 10%
-// Partner boats (pilot_type='partner_boat'): owner 70% / simplix 30%
-const PILOT_PCT = 0.45;
-const SIMPLIX_PCT = 0.10;
-const OWNERS_PCT = 0.45;
-const PARTNER_BOAT_PCT = 0.70;
-
-type PilotType = 'pilot' | 'partner_boat';
-
-const sharePercentFor = (t: PilotType | null | undefined): number =>
-  t === 'partner_boat' ? PARTNER_BOAT_PCT : PILOT_PCT;
-
-const PILOT_TYPE_LABEL: Record<PilotType, string> = {
-  pilot: 'Piloto Gamma',
-  partner_boat: 'Barco Parceiro',
-};
+// Split unificado 70/30: todos os pilotos sao Barco Parceiro.
+// Piloto recebe 70% do bruto, Simplix fica com 30% (menos taxa MP e descontos).
+const PILOT_PCT = 0.70;
+const SIMPLIX_PCT = 0.30;
 
 interface PaymentRow {
   id: string;
@@ -51,14 +38,12 @@ interface PilotDayPayout {
   pilot_profile_id: string;
   pilot_user_id: string;
   pilot_name: string;
-  pilot_type: PilotType;
-  share_percent: number; // 0.45 ou 0.60
   pix_key: string | null;
   pix_key_type: string | null;
   date: string; // YYYY-MM-DD do created_at
   rides_count: number;
   gross: number;
-  pilot_share: number;
+  pilot_share: number; // gross * 70%
   earning_ids: string[];
 }
 
@@ -83,14 +68,12 @@ interface PayoutHistoryRow {
   payout_id: string;
   pilot_profile_id: string;
   pilot_name: string;
-  pilot_type: PilotType;
-  share_percent: number;
   pix_key: string | null;
   pix_key_type: string | null;
   paid_date: string; // YYYY-MM-DD do paid_at
   rides_count: number;
   gross: number;
-  pilot_share: number;
+  pilot_share: number; // gross * 70%
   method: PayoutMethod | null;
   reference: string | null;
   notes: string | null;
@@ -124,7 +107,6 @@ interface PaidRide {
   voucher_discount_amount: number | null;
   voucher_sponsor: 'owner' | 'platform' | null;
   completed_at: string | null;
-  pilot_type: PilotType; // 'pilot' (Gamma) ou 'partner_boat'
   mp_fee: number; // taxa MP daquele ride (0 se wallet)
 }
 
@@ -178,7 +160,7 @@ const AdminFinancial = () => {
     setPayoutsLoading(true);
     const { data } = await supabase
       .from('pilot_earnings')
-      .select('id, pilot_profile_id, pilot_user_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
+      .select('id, pilot_profile_id, pilot_user_id, gross_amount, created_at, pilot_profiles(full_name, pix_key, pix_key_type)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
@@ -187,10 +169,8 @@ const AdminFinancial = () => {
       for (const row of data) {
         const id = row.pilot_profile_id as string;
         const userId = row.pilot_user_id as string;
-        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
+        const profile = row.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
         const name = profile?.full_name ?? 'Piloto desconhecido';
-        const ptype: PilotType = profile?.pilot_type ?? 'pilot';
-        const sharePct = sharePercentFor(ptype);
         const date = String(row.created_at).slice(0, 10);
         const key = `${id}:${date}`;
         const gross = Number(row.gross_amount);
@@ -200,8 +180,6 @@ const AdminFinancial = () => {
             pilot_profile_id: id,
             pilot_user_id: userId,
             pilot_name: name,
-            pilot_type: ptype,
-            share_percent: sharePct,
             pix_key: profile?.pix_key ?? null,
             pix_key_type: profile?.pix_key_type ?? null,
             date,
@@ -213,7 +191,7 @@ const AdminFinancial = () => {
         }
         grouped[key].rides_count += 1;
         grouped[key].gross += gross;
-        grouped[key].pilot_share += gross * sharePct;
+        grouped[key].pilot_share += gross * PILOT_PCT;
         grouped[key].earning_ids.push(row.id as string);
       }
       // Mais recente primeiro
@@ -230,7 +208,7 @@ const AdminFinancial = () => {
     // 1. Busca todos os payouts dos ultimos 30 dias com pilot info
     const { data: payouts } = await supabase
       .from('pilot_payouts')
-      .select('id, pilot_profile_id, amount, paid_at, method, reference, notes, pilot_profiles(full_name, pix_key, pix_key_type, pilot_type)')
+      .select('id, pilot_profile_id, amount, paid_at, method, reference, notes, pilot_profiles(full_name, pix_key, pix_key_type)')
       .gte('paid_at', cutoff.toISOString())
       .order('paid_at', { ascending: false });
 
@@ -258,16 +236,13 @@ const AdminFinancial = () => {
     }
 
     const rows: PayoutHistoryRow[] = payouts.map(p => {
-      const profile = p.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null; pilot_type?: PilotType } | null;
-      const ptype: PilotType = profile?.pilot_type ?? 'pilot';
+      const profile = p.pilot_profiles as { full_name?: string; pix_key?: string | null; pix_key_type?: string | null } | null;
       const aggr = earningsByPayout[p.id as string] ?? { rides_count: 0, gross: 0 };
       return {
         key: p.id as string,
         payout_id: p.id as string,
         pilot_profile_id: p.pilot_profile_id as string,
         pilot_name: profile?.full_name ?? 'Piloto desconhecido',
-        pilot_type: ptype,
-        share_percent: sharePercentFor(ptype),
         pix_key: profile?.pix_key ?? null,
         pix_key_type: profile?.pix_key_type ?? null,
         paid_date: String(p.paid_at).slice(0, 10),
@@ -411,8 +386,6 @@ ${html}
 
   const buildReceiptHtml = (params: {
     pilotName: string;
-    pilotType: PilotType;
-    sharePercent: number; // 0.45 ou 0.60
     pixKey: string | null;
     pixKeyType: string | null;
     refDate: string; // YYYY-MM-DD
@@ -431,19 +404,16 @@ ${html}
     const pixLine = params.pixKey
       ? `${params.pixKeyType ? params.pixKeyType.toUpperCase() : 'PIX'}: ${params.pixKey}`
       : '<em style="color:#c87800">Sem PIX cadastrado</em>';
-    const pctLabel = `${(params.sharePercent * 100).toFixed(0)}%`;
-    const recipientLabel = params.pilotType === 'partner_boat' ? 'Repasse barco parceiro' : 'Comissão piloto';
     return `
 <div class="header">
   <h1>Recibo de Repasse — Gamma</h1>
   <div class="meta">Gerado em<br/>${generatedAt}</div>
 </div>
 <div class="row"><span class="label">Piloto</span><span class="value">${params.pilotName}</span></div>
-<div class="row"><span class="label">Tipo</span><span class="value">${PILOT_TYPE_LABEL[params.pilotType]}</span></div>
 <div class="row"><span class="label">${params.refLabel}</span><span class="value">${dateLabel}</span></div>
 <div class="row"><span class="label">Corridas realizadas</span><span class="value">${params.ridesCount}</span></div>
 <div class="row"><span class="label">Total bruto</span><span class="value">${fmtBR(params.gross)}</span></div>
-<div class="row"><span class="label">${recipientLabel}</span><span class="value">${pctLabel}</span></div>
+<div class="row"><span class="label">Repasse (70%)</span><span class="value">${fmtBR(params.pilotShare)}</span></div>
 <div class="row"><span class="label">Chave PIX</span><span class="value">${pixLine}</span></div>
 ${params.method ? `<div class="row"><span class="label">Método</span><span class="value">${({pix:'PIX',cash:'Dinheiro',transfer:'Transferência',other:'Outro'} as Record<string,string>)[params.method]}</span></div>` : ''}
 ${params.reference ? `<div class="row"><span class="label">Referência</span><span class="value" style="font-family:monospace;font-size:11px">${params.reference}</span></div>` : ''}
@@ -463,11 +433,9 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
     const rows = visible.map(p => ({
       Data: p.date,
       Piloto: p.pilot_name,
-      Tipo: PILOT_TYPE_LABEL[p.pilot_type],
-      '%': `${(p.share_percent * 100).toFixed(0)}%`,
       Corridas: p.rides_count,
       'Bruto (R$)': p.gross.toFixed(2).replace('.', ','),
-      'Repasse (R$)': p.pilot_share.toFixed(2).replace('.', ','),
+      'Repasse 70% (R$)': p.pilot_share.toFixed(2).replace('.', ','),
       PIX: p.pix_key ?? '',
       'Tipo PIX': p.pix_key_type ?? '',
       Status: 'Pendente',
@@ -481,11 +449,9 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
     const rows = visible.map(h => ({
       'Data do repasse': h.paid_date,
       Piloto: h.pilot_name,
-      Tipo: PILOT_TYPE_LABEL[h.pilot_type],
-      '%': `${(h.share_percent * 100).toFixed(0)}%`,
       Corridas: h.rides_count,
       'Bruto (R$)': h.gross.toFixed(2).replace('.', ','),
-      'Repassado (R$)': h.pilot_share.toFixed(2).replace('.', ','),
+      'Repassado 70% (R$)': h.pilot_share.toFixed(2).replace('.', ','),
       Método: h.method ? PAYOUT_METHOD_LABEL[h.method] : '',
       Referência: h.reference ?? '',
       Observações: h.notes ?? '',
@@ -498,8 +464,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const handleOpenReceipt = (p: PilotDayPayout) => {
     const html = buildReceiptHtml({
       pilotName: p.pilot_name,
-      pilotType: p.pilot_type,
-      sharePercent: p.share_percent,
       pixKey: p.pix_key,
       pixKeyType: p.pix_key_type,
       refDate: p.date,
@@ -515,8 +479,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const handleOpenHistoryReceipt = (h: PayoutHistoryRow) => {
     const html = buildReceiptHtml({
       pilotName: h.pilot_name,
-      pilotType: h.pilot_type,
-      sharePercent: h.share_percent,
       pixKey: h.pix_key,
       pixKeyType: h.pix_key_type,
       refDate: h.paid_date,
@@ -651,19 +613,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         pilot_user_id: string | null;
       }>;
 
-      // Batch-fetch pilot_type para os pilotos das rides
-      const pilotUserIds = Array.from(new Set(ridesRaw.map(r => r.pilot_user_id).filter(Boolean) as string[]));
-      const pilotTypeMap = new Map<string, PilotType>();
-      if (pilotUserIds.length > 0) {
-        const { data: pilotProfiles } = await supabase
-          .from('pilot_profiles')
-          .select('user_id, pilot_type')
-          .in('user_id', pilotUserIds);
-        (pilotProfiles ?? []).forEach((p: { user_id: string; pilot_type: PilotType }) => {
-          pilotTypeMap.set(p.user_id, p.pilot_type ?? 'pilot');
-        });
-      }
-
       // Batch-fetch mp_fee por ride_id (so paga MP, wallet eh zero)
       const rideIds = ridesRaw.map(r => r.id);
       const mpFeeMap = new Map<string, number>();
@@ -687,7 +636,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
         voucher_discount_amount: r.voucher_discount_amount,
         voucher_sponsor: null, // join removido — buscar separadamente quando necessario
         completed_at: r.completed_at,
-        pilot_type: r.pilot_user_id ? (pilotTypeMap.get(r.pilot_user_id) ?? 'pilot') : 'pilot',
         mp_fee: mpFeeMap.get(r.id) ?? 0,
       })));
 
@@ -718,82 +666,26 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
   const todayRevenue = daily.find(d => d.date === new Date().toISOString().slice(0, 10))?.total ?? 0;
   const paidRidesCount = paidRides.length;
 
-  // Revenue split totals — fair-discount model
-  // Pilot Gamma sempre recebe 45% do bruto intacto; Barco Parceiro 70%.
-  // Voucher discount eh integralmente absorvido pelo sponsor declarado;
-  // referral discount eh dividido proporcionalmente entre owner e simplix.
-  // Taxa MP eh deduzida do pool owner+simplix (Gamma) ou simplix (parceiro)
-  // pra que o saldo MP confira com o sistema.
-  const ownerSimplixSum = OWNERS_PCT + SIMPLIX_PCT; // 0.55
-  const partnerPlatformSum = PARTNER_BOAT_PCT + (1 - PARTNER_BOAT_PCT); // 1.0
-  let totalPilotGamma = 0;       // 45% pra pilotos Gamma
-  let totalPartnerBoat = 0;      // 70% pra barcos parceiros
-  let totalOwners = 0;           // 45% pros donos Gamma (apenas rides Gamma)
-  let totalSimplixGamma = 0;     // 10% Simplix de rides Gamma
-  let totalSimplixPartner = 0;   // 30% Simplix de rides parceiros
+  // Modelo unificado 70/30: piloto (Barco Parceiro) recebe 70% intacto do bruto.
+  // Simplix fica com 30% menos taxa MP e todos os descontos (voucher + referral).
+  let totalPilot = 0;
+  let totalSimplix = 0;
   let totalDiscount = 0;
-  let totalVoucherOwner = 0;
-  let totalVoucherPlatform = 0;
   let totalMpFee = 0;
 
   for (const r of paidRides) {
     const gross = Number(r.gross_price ?? r.price);
     const totalDisc = Number(r.discount_amount ?? 0);
-    const voucherDisc = Number(r.voucher_discount_amount ?? 0);
-    const referralDisc = Math.max(0, totalDisc - voucherDisc);
     const mpFee = Number(r.mp_fee ?? 0);
-    const isPartnerBoat = r.pilot_type === 'partner_boat';
 
-    let pilotShare: number;
-    let ownerShare: number;
-    let simplixShare: number;
+    const pilotShare = gross * PILOT_PCT;
+    const simplixShare = gross * SIMPLIX_PCT - mpFee - totalDisc;
 
-    if (isPartnerBoat) {
-      // Barco Parceiro: 70% parceiro / 30% plataforma — sem dono separado
-      pilotShare = gross * PARTNER_BOAT_PCT;
-      ownerShare = 0;
-      simplixShare = gross - pilotShare;
-      // MP fee toda em cima de simplix (so existe ele do lado da plataforma)
-      simplixShare -= mpFee;
-      if (voucherDisc > 0) simplixShare -= voucherDisc;
-      if (referralDisc > 0) simplixShare -= referralDisc;
-
-      totalPartnerBoat += pilotShare;
-      totalSimplixPartner += simplixShare;
-    } else {
-      // Piloto Gamma: 45/45/10
-      pilotShare = gross * PILOT_PCT;
-      ownerShare = gross * OWNERS_PCT;
-      simplixShare = gross * SIMPLIX_PCT;
-
-      if (voucherDisc > 0 && r.voucher_sponsor === 'owner') {
-        ownerShare -= voucherDisc;
-      } else if (voucherDisc > 0 && r.voucher_sponsor === 'platform') {
-        simplixShare -= voucherDisc;
-      }
-
-      if (referralDisc > 0) {
-        ownerShare -= referralDisc * (OWNERS_PCT / ownerSimplixSum);
-        simplixShare -= referralDisc * (SIMPLIX_PCT / ownerSimplixSum);
-      }
-
-      if (mpFee > 0) {
-        ownerShare -= mpFee * (OWNERS_PCT / ownerSimplixSum);
-        simplixShare -= mpFee * (SIMPLIX_PCT / ownerSimplixSum);
-      }
-
-      totalPilotGamma += pilotShare;
-      totalOwners += ownerShare;
-      totalSimplixGamma += simplixShare;
-    }
+    totalPilot += pilotShare;
+    totalSimplix += simplixShare;
     totalDiscount += totalDisc;
     totalMpFee += mpFee;
-    if (r.voucher_sponsor === 'owner') totalVoucherOwner += voucherDisc;
-    if (r.voucher_sponsor === 'platform') totalVoucherPlatform += voucherDisc;
   }
-  // partnerPlatformSum is used implicitly above via PARTNER_BOAT_PCT; reference
-  // to satisfy unused-var lint without changing semantics
-  void partnerPlatformSum;
 
   // Ad sales (100% platform extra revenue)
   const totalAdRevenue = adSales.reduce((s, a) => s + Number(a.price), 0);
@@ -962,7 +854,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                 />
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-xs text-amber-700 flex items-center">
                   <p>
-                    <strong>Como funciona:</strong> Piloto Gamma recebe 45% do bruto intacto. A taxa MP é dividida entre dono do barco (~81.8%) e Simplix (~18.2%) na razão 45:10. Para Barco Parceiro, a Simplix absorve a taxa toda.
+                    <strong>Como funciona:</strong> Piloto (Barco Parceiro) recebe 70% do bruto intacto. Simplix absorve toda a taxa MP e os descontos aplicados.
                   </p>
                 </div>
               </div>
@@ -977,39 +869,11 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                 <div className="text-xs text-muted-foreground">
                   <span className="font-medium">Descontos absorvidos:</span>{' '}
                   <span className="font-bold text-amber-600 tabular-nums">{fmt(totalDiscount)}</span>
-                  <span className="ml-1">(donos + Simplix)</span>
+                  <span className="ml-1">(deduzidos da Simplix)</span>
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Pilotos Gamma 45% */}
-              <div className="bg-card rounded-xl border border-border p-5">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
-                    <Anchor className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">PILOTOS GAMMA (45%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalPilotGamma)}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">Funcionários conduzindo barcos da Gamma</p>
-              </div>
-
-              {/* Donos do Barco 45% (Gamma) */}
-              <div className="bg-card rounded-xl border border-border p-5">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-600 flex items-center justify-center">
-                    <Users className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium">BARCOS GAMMA (45%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalOwners)}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">Após descontos e taxa MP rateados</p>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Barcos Parceiros 70% */}
               <div className="bg-card rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
                 <div className="flex items-center gap-3 mb-2">
@@ -1017,34 +881,25 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                     <Ship className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-emerald-700/80 font-medium">BARCOS PARCEIROS (70%)</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalPartnerBoat)}</p>
+                    <p className="text-xs text-emerald-700/80 font-medium">BARCO PARCEIRO (70%)</p>
+                    <p className="text-2xl font-bold text-foreground">{fmt(totalPilot)}</p>
                   </div>
                 </div>
-                <p className="text-xs text-emerald-700/80">Donos de barcos próprios</p>
+                <p className="text-xs text-emerald-700/80">Piloto recebe 70% intacto do bruto</p>
               </div>
 
-              {/* Simplix com breakdown */}
-              <div className="bg-card rounded-xl border border-border p-5">
+              {/* Simplix 30% */}
+              <div className="bg-card rounded-xl border border-purple-500/30 bg-purple-500/5 p-5">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium">SIMPLIX</p>
-                    <p className="text-xl font-bold text-foreground">{fmt(totalSimplixGamma + totalSimplixPartner)}</p>
+                    <p className="text-xs text-purple-700/80 font-medium">SIMPLIX (30%)</p>
+                    <p className="text-2xl font-bold text-foreground">{fmt(totalSimplix)}</p>
                   </div>
                 </div>
-                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  <div className="flex justify-between">
-                    <span>↳ 10% rides Gamma</span>
-                    <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixGamma)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>↳ 30% rides Parceiros</span>
-                    <span className="font-semibold tabular-nums text-foreground">{fmt(totalSimplixPartner)}</span>
-                  </div>
-                </div>
+                <p className="text-xs text-purple-700/80">Após descontos e taxa MP absorvidos</p>
               </div>
             </div>
           </div>
@@ -1097,7 +952,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                     <tr className="border-b border-border bg-muted/50">
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Dia</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium">Tipo</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium">Bruto</th>
                       <th className="text-right px-4 py-3 text-muted-foreground font-medium text-blue-600">Repassar</th>
@@ -1110,11 +964,6 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                       <tr key={p.key} className="border-b border-border last:border-0 hover:bg-muted/30">
                         <td className="px-4 py-3 text-foreground whitespace-nowrap">{fmtDate(p.date)}</td>
                         <td className="px-4 py-3 font-medium text-foreground">{p.pilot_name}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${p.pilot_type === 'partner_boat' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-blue-500/10 text-blue-600 border-blue-500/30'}`}>
-                            {PILOT_TYPE_LABEL[p.pilot_type]} {(p.share_percent * 100).toFixed(0)}%
-                          </span>
-                        </td>
                         <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">{p.rides_count}</td>
                         <td className="px-4 py-3 text-right text-foreground tabular-nums">{fmt(p.gross)}</td>
                         <td className="px-4 py-3 text-right font-bold text-blue-600 tabular-nums">{fmt(p.pilot_share)}</td>
@@ -1255,9 +1104,8 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Corridas</th>
                       <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-blue-600">Pilotos (45%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-green-600">Donos (45%)</th>
-                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (10%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-emerald-700">Barco Parceiro (70%)</th>
+                      <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (30%)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1268,8 +1116,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{d.count}</td>
                         <td className="px-4 py-3 font-semibold text-foreground">{fmt(d.total)}</td>
-                        <td className="px-4 py-3 text-blue-600">{fmt(d.total * PILOT_PCT)}</td>
-                        <td className="px-4 py-3 text-green-600">{fmt(d.total * OWNERS_PCT)}</td>
+                        <td className="px-4 py-3 text-emerald-700">{fmt(d.total * PILOT_PCT)}</td>
                         <td className="px-4 py-3 text-purple-600">{fmt(d.total * SIMPLIX_PCT)}</td>
                       </tr>
                     ))}
@@ -1288,13 +1135,17 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                   <tr className="border-b border-border bg-muted/50">
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Data</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Bruto</th>
-                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Piloto (45%)</th>
-                    <th className="text-left px-4 py-3 text-muted-foreground font-medium">Dono + Simplix (55%)</th>
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium text-emerald-700">Barco Parceiro (70%)</th>
+                    <th className="text-left px-4 py-3 text-muted-foreground font-medium text-purple-600">Simplix (30%)</th>
                     <th className="text-left px-4 py-3 text-muted-foreground font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.slice(0, 20).map(p => {
+                  {/* Filtrado: so mostra Pagos e Estornados — falhas nao geram receita */}
+                  {payments
+                    .filter(p => p.status === 'completed' || p.status === 'refunded')
+                    .slice(0, 20)
+                    .map(p => {
                     const gross = Number(p.amount);
                     return (
                       <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
@@ -1302,16 +1153,13 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                           {new Date(p.created_at).toLocaleDateString('pt-BR')}
                         </td>
                         <td className="px-4 py-3 font-semibold text-foreground">{fmt(gross)}</td>
-                        <td className="px-4 py-3 text-blue-600">{fmt(gross * PILOT_PCT)}</td>
-                        <td className="px-4 py-3 text-green-600">{fmt(gross * (SIMPLIX_PCT + OWNERS_PCT))}</td>
+                        <td className="px-4 py-3 text-emerald-700">{fmt(gross * PILOT_PCT)}</td>
+                        <td className="px-4 py-3 text-purple-600">{fmt(gross * SIMPLIX_PCT)}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full border
                             ${p.status === 'completed' ? 'bg-green-500/10 text-green-600 border-green-500/30' :
-                              p.status === 'failed' ? 'bg-red-500/10 text-red-600 border-red-500/30' :
-                              'bg-yellow-500/10 text-yellow-600 border-yellow-500/30'}`}>
-                            {p.status === 'completed' ? 'Aprovado' :
-                             p.status === 'failed' ? 'Falhou' :
-                             p.status === 'pending' ? 'Pendente' : p.status}
+                              'bg-orange-500/10 text-orange-600 border-orange-500/30'}`}>
+                            {p.status === 'completed' ? 'Pago' : 'Estornado'}
                           </span>
                         </td>
                       </tr>
@@ -1344,7 +1192,7 @@ ${params.notes ? `<div class="row"><span class="label">Observações</span><span
                 </div>
                 <div className="text-right text-xs text-muted-foreground">
                   <p>{payoutModalGroup.rides_count} corrida{payoutModalGroup.rides_count !== 1 ? 's' : ''}</p>
-                  <p>{(payoutModalGroup.share_percent * 100).toFixed(0)}% de {fmt(payoutModalGroup.gross)}</p>
+                  <p>70% de {fmt(payoutModalGroup.gross)}</p>
                 </div>
               </div>
 
